@@ -16,7 +16,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
-import { loadOrderHistory, loadExpenses, addExpense } from '../utils/storage';
+import { loadOrderHistory, loadExpenses, addExpense, removeExpense } from '../utils/storage';
 import { backupAllData, restoreAllData } from '../utils/backup';
 
 export default function ReportsScreen() {
@@ -110,6 +110,24 @@ export default function ReportsScreen() {
     });
     setExpenseModalVisible(false);
     await loadData();
+  };
+
+  const handleDeleteExpense = (id) => {
+    Alert.alert(
+      t('confirmDeleteTitle') || 'Delete Expense',
+      t('confirmDeleteMessage') || 'Are you sure you want to delete this expense?',
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('delete') || 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await removeExpense(id);
+            await loadData();
+          },
+        },
+      ]
+    );
   };
 
   const handleBackup = async () => {
@@ -224,7 +242,12 @@ export default function ReportsScreen() {
           <Text style={styles.emptyText}>{t('noExpensesRecorded')}</Text>
         ) : (
           filteredExpenses.map((exp) => (
-            <View key={exp.id} style={styles.expenseItem}>
+            <TouchableOpacity
+              key={exp.id}
+              style={styles.expenseItem}
+              onLongPress={() => handleDeleteExpense(exp.id)}
+              delayLongPress={500}
+            >
               <View style={{ flex: 1 }}>
                 <Text style={styles.expenseCategory}>
                   {exp.category} • ₹{exp.amount.toFixed(2)}
@@ -236,8 +259,9 @@ export default function ReportsScreen() {
               <View>
                 <Text style={styles.expenseDate}>{exp.date}</Text>
                 <Text style={styles.expenseTime}>{exp.time}</Text>
+                <Text style={styles.deleteHint}>Hold to delete</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </View>
@@ -319,7 +343,6 @@ export default function ReportsScreen() {
   );
 }
 
-// styles stay the same as earlier
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
 
@@ -422,6 +445,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#aaa',
     textAlign: 'right',
+  },
+  deleteHint: {
+    fontSize: 10,
+    color: '#C62828',
+    textAlign: 'right',
+    marginTop: 2,
+    fontStyle: 'italic',
   },
 
   infoText: {

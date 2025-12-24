@@ -1,10 +1,9 @@
-// App.js – main navigation with language toggle, including Reports tab
-
+// App.js
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import { Text, View, StyleSheet, Dimensions } from 'react-native';
+import { Text, View, StyleSheet, Dimensions, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { LanguageProvider, useLanguage } from './src/context/LanguageContext';
@@ -18,7 +17,6 @@ import ReportsScreen from './src/screens/ReportsScreen';
 
 const Tab = createBottomTabNavigator();
 const { width } = Dimensions.get('window');
-const isSmallScreen = width < 380;
 
 function TabIcon({ emoji }) {
   return (
@@ -45,12 +43,16 @@ function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: '#8B0000' },
+        headerStyle: { 
+          backgroundColor: '#E31E24',
+          elevation: 0,
+          shadowOpacity: 0,
+        },
         headerTintColor: '#fff',
-        headerTitleStyle: { fontWeight: 'bold', fontSize: 18 },
+        headerTitleStyle: { fontWeight: '800', fontSize: 20 },
         headerRight: () => <LanguageToggle />,
-        tabBarActiveTintColor: '#8B0000',
-        tabBarInactiveTintColor: 'gray',
+        tabBarActiveTintColor: '#E31E24',
+        tabBarInactiveTintColor: '#ADB5BD',
         tabBarStyle: styles.tabBar,
         tabBarLabelStyle: styles.tabLabel,
       }}
@@ -128,38 +130,38 @@ export default function App() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    height: 88,
-    paddingBottom: 18,
-    paddingTop: 6,
+    height: Platform.OS === 'ios' ? 90 : 70,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 10,
     backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    elevation: 8,
+    borderTopWidth: 0,
+    elevation: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
   },
   tabLabel: {
-    fontSize: isSmallScreen ? 10 : 11,
+    fontSize: 11,
+    fontWeight: '700',
     marginBottom: 2,
-    fontWeight: '600',
   },
   iconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: 5,
   },
   iconText: {
     fontSize: 22,
   },
   langWrapper: {
-    marginRight: 10,
+    marginRight: 15,
   },
   langButton: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    fontSize: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    overflow: 'hidden',
   },
 });

@@ -329,6 +329,18 @@ export const loadExpenses = async () => {
   }
 };
 
+export const removeExpense = async (id) => {
+  try {
+    const current = await loadExpenses();
+    const updated = current.filter((e) => e.id !== id);
+    await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(updated));
+    return true;
+  } catch (error) {
+    console.log('Error removing expense:', error);
+    return false;
+  }
+};
+
 export const clearExpenses = async () => {
   try {
     await AsyncStorage.removeItem(EXPENSES_KEY);
