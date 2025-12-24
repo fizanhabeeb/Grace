@@ -1,5 +1,5 @@
 // src/screens/BillScreen.js
-// Finalize order, calculate GST, show summary, Save/Export PDF/WhatsApp - Optimized for Speed
+// Finalize order, calculate GST, show summary, Payment Modes, Discounts, Save/Export PDF/WhatsApp
 
 import React, { useState, useCallback } from 'react';
 import {
@@ -44,6 +44,10 @@ export default function BillScreen({ navigation }) {
   const [billNumber, setBillNumber] = useState(1);
   const [isSaved, setIsSaved] = useState(false);
   
+  // POS Features: Payment & Discount
+  const [paymentMode, setPaymentMode] = useState('Cash'); // 'Cash' | 'UPI' | 'Card'
+  const [discount, setDiscount] = useState('0');
+  
   const [gstEnabled, setGstEnabled] = useState(true);
   const [gstPercentage, setGstPercentage] = useState(5);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
@@ -78,6 +82,8 @@ export default function BillScreen({ navigation }) {
       setHotelPhone(settings.hotelPhone || '+91 XXXXXXXXXX');
     }
     setIsSaved(false);
+    setDiscount('0');
+    setPaymentMode('Cash');
   };
 
   const toggleGst = async (value) => {
@@ -117,7 +123,11 @@ export default function BillScreen({ navigation }) {
 
   const calculateSubtotal = () => orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const calculateGST = () => gstEnabled ? calculateSubtotal() * (gstPercentage / 100) : 0;
-  const calculateGrandTotal = () => calculateSubtotal() + calculateGST();
+  const calculateGrandTotal = () => {
+    const total = calculateSubtotal() + calculateGST();
+    const disc = parseFloat(discount) || 0;
+    return Math.max(0, total - disc);
+  };
 
   const handleSaveOrder = async () => {
     if (orderItems.length === 0) {
@@ -125,7 +135,6 @@ export default function BillScreen({ navigation }) {
       return;
     }
 
-    // Direct save logic without confirmation Alert to save time
     const orderData = {
       items: orderItems,
       customerName,
@@ -136,6 +145,8 @@ export default function BillScreen({ navigation }) {
       gst: calculateGST(),
       gstEnabled,
       gstPercentage,
+      discount: parseFloat(discount) || 0,
+      paymentMode,
       grandTotal: calculateGrandTotal(),
     };
 
@@ -150,38 +161,21 @@ export default function BillScreen({ navigation }) {
   };
 
   const generateWhatsAppBill = () => {
+    const total = calculateGrandTotal();
     const now = new Date();
-    const dateStr = now.toLocaleDateString('en-IN');
-    const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-
-    let bill = `════════════════════════════\n`;
-    bill += `    🏨 *${hotelName}*\n`;
-    bill += `      ${hotelAddress}\n`;
-    bill += `     Ph: ${hotelPhone}\n`;
-    bill += `════════════════════════════\n\n`;
-    bill += `📋 *Bill No:* #${billNumber}\n`;
-    bill += `📅 *Date:* ${dateStr}\n`;
-    bill += `🕐 *Time:* ${timeStr}\n`;
+    let bill = `════════════════════════════\n    🏨 *${hotelName}*\n      ${hotelAddress}\n     Ph: ${hotelPhone}\n════════════════════════════\n\n📋 *Bill No:* #${billNumber}\n📅 *Date:* ${now.toLocaleDateString('en-IN')}\n🕐 *Time:* ${now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}\n`;
     if (tableNumber) bill += `🪑 *Table:* ${tableNumber}\n`;
     if (customerName) bill += `👤 *Customer:* ${customerName}\n`;
-    bill += `\n────────────────────────────\n`;
-    bill += `*ITEM* *QTY* *AMT*\n`;
-    bill += `────────────────────────────\n`;
-
+    bill += `\n────────────────────────────\n*ITEM* *QTY* *AMT*\n────────────────────────────\n`;
     orderItems.forEach(item => {
       const itemName = item.name.length > 18 ? item.name.substring(0, 18) + '..' : item.name.padEnd(20);
-      const qty = item.quantity.toString().padStart(2);
-      const amount = `₹${(item.price * item.quantity).toFixed(0)}`.padStart(6);
-      bill += `${itemName} ${qty}  ${amount}\n`;
+      bill += `${itemName} ${item.quantity.toString().padStart(2)}  ₹${(item.price * item.quantity).toFixed(0).padStart(6)}\n`;
     });
-
-    bill += `────────────────────────────\n\n`;
-    bill += `   Subtotal:        ₹${calculateSubtotal().toFixed(2)}\n`;
+    bill += `────────────────────────────\n\n   Subtotal:        ₹${calculateSubtotal().toFixed(2)}\n`;
     if (gstEnabled) bill += `   GST (${gstPercentage}%):         ₹${calculateGST().toFixed(2)}\n`;
-    bill += `════════════════════════════\n`;
-    bill += `   *GRAND TOTAL:    ₹${calculateGrandTotal().toFixed(2)}*\n`;
-    bill += `════════════════════════════\n\n`;
-    bill += `   💚 *Thank You! Visit Again* 💚\n`;
+    if (parseFloat(discount) > 0) bill += `   Discount:       -₹${parseFloat(discount).toFixed(2)}\n`;
+    bill += `════════════════════════════\n   *GRAND TOTAL:    ₹${total.toFixed(2)}*\n`;
+    bill += `   Paid via:        *${paymentMode}*\n════════════════════════════\n\n   💚 *Thank You! Visit Again* 💚\n`;
     return bill;
   };
 
@@ -189,64 +183,14 @@ export default function BillScreen({ navigation }) {
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-IN');
     const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-
-    const itemsHTML = orderItems.map(item => `
-      <tr>
-        <td style="text-align: left; padding: 8px 5px; border-bottom: 1px solid #eee;">${item.name}</td>
-        <td style="text-align: center; padding: 8px 5px; border-bottom: 1px solid #eee;">${item.quantity}</td>
-        <td style="text-align: right; padding: 8px 5px; border-bottom: 1px solid #eee;">₹${item.price.toFixed(2)}</td>
-        <td style="text-align: right; padding: 8px 5px; border-bottom: 1px solid #eee;">₹${(item.price * item.quantity).toFixed(2)}</td>
-      </tr>
-    `).join('');
-
-    return `
-      <html>
-      <head><meta charset="utf-8">
-      <style>
-        body { font-family: 'Courier New', monospace; padding: 20px; max-width: 320px; margin: 0 auto; color: #333; }
-        .header { text-align: center; padding-bottom: 15px; border-bottom: 2px dashed #333; margin-bottom: 15px; }
-        table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 12px; }
-        .grand-total { font-size: 18px; font-weight: bold; color: #8B0000; border-top: 2px solid #8B0000; padding-top: 10px; margin-top: 10px; }
-      </style>
-      </head>
-      <body>
-        <div class="header">
-          <div style="font-size: 22px; font-weight: bold;">🏨 ${hotelName}</div>
-          <div style="font-size: 12px;">${hotelAddress}<br>Ph: ${hotelPhone}</div>
-        </div>
-        <div style="font-size: 12px;">Bill No: #${billNumber} | Date: ${dateStr}</div>
-        <table>
-          <thead><tr><th style="text-align:left">Item</th><th>Qty</th><th style="text-align:right">Price</th><th style="text-align:right">Total</th></tr></thead>
-          <tbody>${itemsHTML}</tbody>
-        </table>
-        <div style="text-align: right; font-size: 13px;">
-          <p>Subtotal: ₹${calculateSubtotal().toFixed(2)}</p>
-          ${gstEnabled ? `<p>GST (${gstPercentage}%): ₹${calculateGST().toFixed(2)}</p>` : ''}
-          <div class="grand-total">GRAND TOTAL: ₹${calculateGrandTotal().toFixed(2)}</div>
-        </div>
-      </body>
-      </html>
-    `;
+    const itemsHTML = orderItems.map(item => `<tr><td>${item.name}</td><td style="text-align:center">${item.quantity}</td><td style="text-align:right">₹${item.price.toFixed(0)}</td><td style="text-align:right">₹${(item.price * item.quantity).toFixed(0)}</td></tr>`).join('');
+    return `<html><body style="font-family:monospace;padding:20px;max-width:320px;margin:0 auto"><h2 style="text-align:center;color:#8B0000">🏨 ${hotelName}</h2><p style="text-align:center;font-size:12px">${hotelAddress}<br>Ph: ${hotelPhone}</p><hr/><p style="font-size:12px">Bill No: #${billNumber}<br>Date: ${dateStr} ${timeStr}<br>Table: ${tableNumber}</p><table><tr><th style="text-align:left">Item</th><th>Qty</th><th>Price</th><th>Total</th></tr>${itemsHTML}</table><hr/><div style="text-align:right"><p>Subtotal: ₹${calculateSubtotal().toFixed(2)}</p>${gstEnabled ? `<p>GST (${gstPercentage}%): ₹${calculateGST().toFixed(2)}</p>` : ''}${parseFloat(discount) > 0 ? `<p>Discount: -₹${parseFloat(discount).toFixed(2)}</p>` : ''}<h3>GRAND TOTAL: ₹${calculateGrandTotal().toFixed(2)}</h3><p>Paid via: ${paymentMode}</p></div><p style="text-align:center;margin-top:20px">Thank You! Visit Again 🙏</p></body></html>`;
   };
 
   const handleWhatsApp = async () => {
-    if (orderItems.length === 0) {
-        Alert.alert(t('error'), t('addItemsFirst'));
-        return;
-    }
-    const billText = generateWhatsAppBill();
-    const encodedBill = encodeURIComponent(billText);
-    let whatsappUrl = `whatsapp://send?text=${encodedBill}`;
-    if (phoneNumber) {
-      let cleanNumber = phoneNumber.replace(/[^\d+]/g, '');
-      if (!cleanNumber.startsWith('+')) {
-        if (!cleanNumber.startsWith('91')) cleanNumber = '91' + cleanNumber;
-        cleanNumber = '+' + cleanNumber;
-      }
-      whatsappUrl = `whatsapp://send?phone=${cleanNumber}&text=${encodedBill}`;
-    }
-    try { await Linking.openURL(whatsappUrl); } 
-    catch (e) { await Share.share({ message: billText }); }
+    if (orderItems.length === 0) { Alert.alert(t('error'), t('addItemsFirst')); return; }
+    const text = generateWhatsAppBill();
+    try { await Share.share({ message: text }); } catch (error) { Alert.alert('Error', 'Could not open WhatsApp'); }
   };
 
   const handlePrint = async () => {
@@ -286,6 +230,27 @@ export default function BillScreen({ navigation }) {
         </View>
 
         <View style={[isLandscape && { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8 }]}>
+          {/* Payment & Discount Card */}
+          <View style={[styles.card, isLandscape && { width: '48%', marginHorizontal: '1%' }]}>
+            <Text style={styles.sectionTitle}>Payment & Discount</Text>
+            <View style={styles.paymentRow}>
+              {['Cash', 'UPI', 'Card'].map(mode => (
+                <TouchableOpacity 
+                  key={mode} 
+                  style={[styles.paymentBtn, paymentMode === mode && styles.paymentBtnActive]}
+                  onPress={() => !isSaved && setPaymentMode(mode)}
+                >
+                  <Text style={[styles.paymentBtnText, paymentMode === mode && {color: '#fff'}]}>{mode}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.discountRow}>
+              <Text style={styles.label}>Discount (₹):</Text>
+              <TextInput style={styles.discountInput} keyboardType="numeric" value={discount} onChangeText={setDiscount} editable={!isSaved} />
+            </View>
+          </View>
+
+          {/* GST Card */}
           <View style={[styles.gstCard, isLandscape && { width: '48%', marginHorizontal: '1%' }]}>
             <View style={styles.gstHeader}>
               <View>
@@ -304,7 +269,7 @@ export default function BillScreen({ navigation }) {
             <TextInput style={styles.input} value={customerName} onChangeText={setCustomerName} placeholder={t('customerName')} editable={!isSaved} />
             <View style={styles.inputRow}>
               <TextInput style={[styles.input, styles.halfInput]} value={tableNumber} onChangeText={setTableNumber} placeholder={t('tableNo')} keyboardType="numeric" editable={!isSaved} />
-              <TextInput style={[styles.input, styles.halfInput]} value={phoneNumber} onChangeText={setPhoneNumber} placeholder={t('phoneWhatsApp')} keyboardType="phone-pad" editable={!isSaved} />
+              <TextInput style={[styles.input, styles.halfInput]} value={phoneNumber} onChangeText={setPhoneNumber} placeholder="WhatsApp No" keyboardType="phone-pad" editable={!isSaved} />
             </View>
           </View>
 
@@ -322,6 +287,7 @@ export default function BillScreen({ navigation }) {
           <View style={[styles.card, isLandscape && { width: '48%', marginHorizontal: '1%' }]}>
             <View style={styles.totalRow}><Text>{t('subtotal')}:</Text><Text>₹{calculateSubtotal().toFixed(2)}</Text></View>
             {gstEnabled && <View style={styles.totalRow}><Text>GST (${gstPercentage}%):</Text><Text>₹{calculateGST().toFixed(2)}</Text></View>}
+            {parseFloat(discount) > 0 && <View style={styles.totalRow}><Text>Discount:</Text><Text style={{color: 'red'}}>-₹{parseFloat(discount).toFixed(2)}</Text></View>}
             <View style={styles.grandTotalRow}>
               <Text style={styles.grandTotalLabel}>{t('grandTotal')}:</Text>
               <Text style={styles.grandTotalValue}>₹{calculateGrandTotal().toFixed(2)}</Text>
@@ -336,7 +302,7 @@ export default function BillScreen({ navigation }) {
             <Text style={styles.completeBtnText}>💾 {t('saveOrderHistory')}</Text>
           </TouchableOpacity>
         ) : (
-          <View style={styles.savedBadge}><Text style={styles.savedText}>✅ {t('orderSaved')} #{billNumber}</Text></View>
+          <View style={styles.savedBadge}><Text style={styles.savedText}>✅ {t('orderSaved')} #{billNumber} ({paymentMode})</Text></View>
         )}
 
         <View style={styles.actionRow}>
@@ -358,6 +324,7 @@ export default function BillScreen({ navigation }) {
         )}
       </View>
 
+      {/* Settings Modal */}
       <Modal visible={settingsModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -365,7 +332,7 @@ export default function BillScreen({ navigation }) {
               <Text style={styles.modalTitle}>⚙️ Bill Settings</Text>
               <Text style={styles.settingLabel}>Hotel Name</Text>
               <TextInput style={styles.input} value={hotelName} onChangeText={setHotelName} />
-              <Text style={styles.settingLabel}>GST (%)</Text>
+              <Text style={styles.settingLabel}>GST Percentage (%)</Text>
               <TextInput style={styles.input} value={tempGstPercentage} onChangeText={setTempGstPercentage} keyboardType="numeric" />
               <View style={styles.modalButtons}>
                 <TouchableOpacity style={styles.cancelButton} onPress={() => setSettingsModalVisible(false)}><Text>Cancel</Text></TouchableOpacity>
@@ -382,12 +349,11 @@ export default function BillScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   scrollView: { flex: 1 },
-  billHeader: { backgroundColor: '#8B0000', padding: 20, alignItems: 'center' },
+  billHeader: { backgroundColor: '#8B0000', padding: 20, alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   billHeaderLandscape: { flexDirection: 'row', justifyContent: 'space-between' },
   hotelName: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   hotelAddress: { color: '#ffcccc', fontSize: 13 },
-  billInfoRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 10 },
-  billInfo: { color: '#fff', fontSize: 12 },
+  billInfo: { color: '#fff', fontSize: 14 },
   card: { backgroundColor: '#fff', margin: 10, borderRadius: 12, padding: 15, elevation: 2 },
   gstCard: { backgroundColor: '#fff', margin: 10, borderRadius: 12, padding: 15, elevation: 2, borderLeftWidth: 4, borderLeftColor: '#4CAF50' },
   gstHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -395,7 +361,14 @@ const styles = StyleSheet.create({
   gstSubtitle: { fontSize: 12, color: '#666' },
   gstControls: { flexDirection: 'row', alignItems: 'center' },
   settingsButton: { marginLeft: 10, padding: 5, backgroundColor: '#f0f0f0', borderRadius: 20 },
-  sectionTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 10 },
+  sectionTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 10, color: '#8B0000' },
+  paymentRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  paymentBtn: { flex: 1, padding: 10, alignItems: 'center', borderRadius: 8, backgroundColor: '#f0f0f0', marginHorizontal: 2 },
+  paymentBtnActive: { backgroundColor: '#8B0000' },
+  paymentBtnText: { fontWeight: 'bold', color: '#666', fontSize: 12 },
+  discountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 10 },
+  label: { fontSize: 14, color: '#666' },
+  discountInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 5, padding: 5, width: 80, textAlign: 'center', backgroundColor: '#fafafa' },
   input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, marginBottom: 10, backgroundColor: '#fafafa' },
   inputRow: { flexDirection: 'row', justifyContent: 'space-between' },
   halfInput: { flex: 0.48 },
@@ -415,7 +388,7 @@ const styles = StyleSheet.create({
   savedText: { color: '#2E7D32', fontWeight: 'bold' },
   newOrderBtn: { marginTop: 10, padding: 12, borderWidth: 1, borderColor: '#8B0000', borderRadius: 8, alignItems: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 20, width: '90%', maxHeight: '80%' },
+  modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 20, width: '90%' },
   modalTitle: { fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
   modalButtons: { flexDirection: 'row', marginTop: 20 },
   saveButton: { flex: 1, backgroundColor: '#4CAF50', padding: 15, borderRadius: 10, alignItems: 'center' },
@@ -426,4 +399,5 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 18, color: '#999', marginVertical: 10 },
   goBackBtn: { backgroundColor: '#8B0000', padding: 12, borderRadius: 8 },
   goBackText: { color: '#fff', fontWeight: 'bold' },
+  settingLabel: { fontWeight: 'bold', marginTop: 10, color: '#666' },
 });
