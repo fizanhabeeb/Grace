@@ -1,7 +1,7 @@
 // src/screens/MenuScreen.js
-// Manage menu: add/edit items, variants, images + SEARCH
+// Manage menu: add/edit items, variants, images + SEARCH + Grid UI
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,7 @@ const { width, height } = Dimensions.get('window');
 export default function MenuScreen() {
   const { t, getCategoryName } = useLanguage();
   const insets = useSafeAreaInsets();
-  const { isLandscape, isSmallScreen, isTablet } = useOrientation();
+  const { isLandscape, numColumns, cardWidth, isTablet } = useOrientation();
 
   const [menuItems, setMenuItems] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -53,9 +53,8 @@ export default function MenuScreen() {
 
   const categories = ['All', 'Breakfast', 'Rice', 'Curry', 'Snacks', 'Beverages'];
 
-  const safeBottom = insets.bottom > 0 ? insets.bottom : 15;
-  const listBottomPadding = isLandscape ? 80 : 100 + safeBottom;
-  const buttonBottomPosition = isLandscape ? 10 : safeBottom + 10;
+  const safeBottom = Platform.OS === 'ios' ? insets.bottom : 10;
+  const bottomPadding = 100 + safeBottom;
 
   useFocusEffect(
     useCallback(() => {
@@ -68,7 +67,16 @@ export default function MenuScreen() {
     setMenuItems(items);
   };
 
-  // IMAGE PICKERS
+  // --- FILTERING LOGIC ---
+  const filteredMenu = useMemo(() => {
+    return menuItems.filter(item => {
+      const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
+      const matchesSearch = item.name.toLowerCase().includes(searchText.toLowerCase());
+      return matchesCategory && matchesSearch;
+    });
+  }, [menuItems, selectedCategory, searchText]);
+
+  // --- IMAGE PICKERS ---
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -113,27 +121,16 @@ export default function MenuScreen() {
     ]);
   };
 
-  // OPEN/CLOSE MODALS
+  // --- MODAL CONTROLS ---
   const openAddModal = () => {
-    setEditingItem(null);
-    setItemName('');
-    setItemPrice('');
-    setItemCategory('Breakfast');
-    setItemImage(null);
-    setHasVariants(false);
-    setVariants([]);
-    setModalVisible(true);
+    setEditingItem(null); setItemName(''); setItemPrice(''); setItemCategory('Breakfast');
+    setItemImage(null); setHasVariants(false); setVariants([]); setModalVisible(true);
   };
 
   const openEditModal = (item) => {
-    setEditingItem(item);
-    setItemName(item.name);
-    setItemPrice(item.price.toString());
-    setItemCategory(item.category);
-    setItemImage(item.image);
-    setHasVariants(!!item.hasVariants);
-    setVariants(item.variants || []);
-    setModalVisible(true);
+    setEditingItem(item); setItemName(item.name); setItemPrice(item.price.toString());
+    setItemCategory(item.category); setItemImage(item.image); setHasVariants(!!item.hasVariants);
+    setVariants(item.variants || []); setModalVisible(true);
   };
 
   const openVariantModal = (variant = null, index = -1) => {
@@ -149,52 +146,26 @@ export default function MenuScreen() {
     setVariantModalVisible(true);
   };
 
-  // SAVE / DELETE VARIANTS
+  // --- SAVE / DELETE LOGIC ---
   const saveVariant = () => {
     if (!variantName.trim() || !variantPrice || isNaN(parseFloat(variantPrice))) {
       Alert.alert('Error', 'Please enter valid variant name and price');
       return;
     }
-    const newVariant = {
-      id: editingVariant?.id || `v${Date.now()}`,
-      name: variantName.trim(),
-      price: parseFloat(variantPrice),
-    };
+    const newVariant = { id: editingVariant?.id || `v${Date.now()}`, name: variantName.trim(), price: parseFloat(variantPrice) };
     if (editingVariantIndex >= 0) {
-      const updated = [...variants];
-      updated[editingVariantIndex] = newVariant;
-      setVariants(updated);
+      const updated = [...variants]; updated[editingVariantIndex] = newVariant; setVariants(updated);
     } else {
       setVariants([...variants, newVariant]);
     }
     setVariantModalVisible(false);
   };
 
-  const deleteVariant = (index) => {
-    Alert.alert('Delete Variant', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          const updated = variants.filter((_, i) => i !== index);
-          setVariants(updated);
-        },
-      },
-    ]);
-  };
-
-  // SAVE / DELETE ITEMS
   const saveItem = async () => {
-    if (!itemName.trim()) {
-      Alert.alert(t('error'), t('enterValidName'));
-      return;
-    }
-    if (!itemPrice || isNaN(parseFloat(itemPrice))) {
+    if (!itemName.trim() || !itemPrice || isNaN(parseFloat(itemPrice))) {
       Alert.alert(t('error'), t('enterValidPrice'));
       return;
     }
-
     const newItem = {
       id: editingItem?.id || Date.now().toString(),
       name: itemName.trim(),
@@ -204,14 +175,7 @@ export default function MenuScreen() {
       hasVariants,
       variants: hasVariants ? variants : [],
     };
-
-    let updatedMenu;
-    if (editingItem) {
-      updatedMenu = menuItems.map((item) => (item.id === editingItem.id ? newItem : item));
-    } else {
-      updatedMenu = [...menuItems, newItem];
-    }
-
+    const updatedMenu = editingItem ? menuItems.map((i) => (i.id === editingItem.id ? newItem : i)) : [...menuItems, newItem];
     await saveMenu(updatedMenu);
     setMenuItems(updatedMenu);
     setModalVisible(false);
@@ -219,332 +183,164 @@ export default function MenuScreen() {
   };
 
   const deleteItem = (item) => {
-    Alert.alert(
-      t('deleteItem'),
-      `${t('deleteConfirm')} "${item.name}"?`,
-      [
-        { text: t('cancel'), style: 'cancel' },
-        {
-          text: t('delete'),
-          style: 'destructive',
-          onPress: async () => {
-            const updatedMenu = menuItems.filter((i) => i.id !== item.id);
-            await saveMenu(updatedMenu);
-            setMenuItems(updatedMenu);
-          },
+    Alert.alert(t('deleteItem'), `${t('deleteConfirm')} "${item.name}"?`, [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('delete'), style: 'destructive', onPress: async () => {
+          const updatedMenu = menuItems.filter((i) => i.id !== item.id);
+          await saveMenu(updatedMenu);
+          setMenuItems(updatedMenu);
         },
-      ]
+      },
+    ]);
+  };
+
+  const renderMenuItem = ({ item }) => {
+    const dynamicImageHeight = isLandscape ? cardWidth * 0.5 : cardWidth * 0.65;
+    return (
+      <TouchableOpacity 
+        style={[styles.menuCard, { width: cardWidth, margin: 5 }]} 
+        onPress={() => openEditModal(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.cardImageContainer}>
+          {item.image ? (
+            <Image source={{ uri: item.image }} style={[styles.cardImage, { height: dynamicImageHeight }]} />
+          ) : (
+            <View style={[styles.cardPlaceholder, { height: dynamicImageHeight }]}>
+              <Text style={{ fontSize: isLandscape ? 28 : 36 }}>🍽️</Text>
+            </View>
+          )}
+          {/* Delete Badge from second code */}
+          <TouchableOpacity style={styles.deleteBadge} onPress={() => deleteItem(item)}>
+            <Text style={styles.deleteBadgeText}>✕</Text>
+          </TouchableOpacity>
+          {item.hasVariants && item.variants.length > 0 && (
+            <View style={styles.variantBadge}>
+              <Text style={styles.variantBadgeText}>{item.variants.length}</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.cardPrice}>₹{item.price.toFixed(0)}</Text>
+        </View>
+        <View style={styles.editIndicator}>
+          <Text style={styles.editIndicatorText}>Tap to edit</Text>
+        </View>
+      </TouchableOpacity>
     );
   };
 
-  // FILTERING BY CATEGORY + SEARCH
-  const filteredByCategory =
-    selectedCategory === 'All'
-      ? menuItems
-      : menuItems.filter((item) => item.category === selectedCategory);
-
-  const filteredMenu = filteredByCategory.filter((item) =>
-    item.name.toLowerCase().includes(searchText.toLowerCase())
-  );
-
-  // RENDER ITEM
-  const renderMenuItem = ({ item }) => (
-    <TouchableOpacity
-      style={[
-        styles.menuItem,
-        isLandscape && styles.menuItemLandscape,
-        isLandscape && { width: isTablet ? '32%' : '48%' },
-      ]}
-      onPress={() => openEditModal(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.imageContainer}>
-        {item.image ? (
-          <Image
-            source={{ uri: item.image }}
-            style={[styles.itemImage, isLandscape && styles.itemImageLandscape]}
-          />
-        ) : (
-          <View style={[styles.placeholderImage, isLandscape && styles.itemImageLandscape]}>
-            <Text style={styles.placeholderText}>🍽️</Text>
-          </View>
-        )}
-        {item.hasVariants && item.variants.length > 0 && (
-          <View style={styles.variantBadge}>
-            <Text style={styles.variantBadgeText}>{item.variants.length}</Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.itemInfo}>
-        <Text style={[styles.itemName, isLandscape && { fontSize: 13 }]} numberOfLines={1}>
-          {item.name}
-        </Text>
-        <Text style={styles.itemCategory}>{getCategoryName(item.category)}</Text>
-        {item.hasVariants && (
-          <Text style={styles.variantCount}>{item.variants.length} variants</Text>
-        )}
-      </View>
-      <Text style={[styles.itemPrice, isLandscape && { fontSize: 15 }]}>
-        ₹{item.price.toFixed(0)}
-      </Text>
-      <TouchableOpacity style={styles.deleteButton} onPress={() => deleteItem(item)}>
-        <Text style={styles.buttonText}>🗑️</Text>
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
-
   return (
     <View style={styles.container}>
-      {/* SEARCH BOX */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search item..."
-          placeholderTextColor="#999"
-          value={searchText}
-          onChangeText={setSearchText}
-        />
+      {/* SEARCH BAR */}
+      <View style={styles.searchBarContainer}>
+        <View style={styles.searchWrapper}>
+          <Text style={{ marginRight: 8 }}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder={t('enterItemName')}
+            placeholderTextColor="#999"
+            value={searchText}
+            onChangeText={setSearchText}
+            clearButtonMode="while-editing"
+          />
+          {searchText !== '' && (
+            <TouchableOpacity onPress={() => setSearchText('')}>
+              <Text style={styles.clearIcon}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* CATEGORY FILTER */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.categoryScroll}  // ← no maxHeight overrides now
-        contentContainerStyle={styles.categoryContent}
-      >
-        {categories.map((category) => (
-          <TouchableOpacity
-            key={category}
-            style={[
-              styles.categoryButton,
-              selectedCategory === category && styles.categoryButtonActive,
-            ]}
-            onPress={() => setSelectedCategory(category)}
-          >
-            <Text
-              style={[
-                styles.categoryText,
-                selectedCategory === category && styles.categoryTextActive,
-              ]}
+      <View style={{ height: 60 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryContent}>
+          {categories.map((category) => (
+            <TouchableOpacity
+              key={category}
+              style={[styles.categoryButton, selectedCategory === category && styles.categoryButtonActive]}
+              onPress={() => setSelectedCategory(category)}
             >
-              {getCategoryName(category)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+              <Text style={[styles.categoryText, selectedCategory === category && styles.categoryTextActive]}>
+                {getCategoryName(category)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       <Text style={styles.itemCount}>
         {t('showing')} {filteredMenu.length} {t('items')} • Tap to edit
       </Text>
 
-      {/* MENU LIST */}
       <FlatList
         data={filteredMenu}
         renderItem={renderMenuItem}
         keyExtractor={(item) => item.id}
-        numColumns={isLandscape ? (isTablet ? 3 : 2) : 1}
-        key={isLandscape ? (isTablet ? 'landscape-tablet' : 'landscape') : 'portrait'}
-        contentContainerStyle={[
-          styles.listContainer,
-          { paddingBottom: listBottomPadding },
-          isLandscape && { paddingHorizontal: 5 },
-        ]}
+        numColumns={numColumns}
+        key={numColumns}
+        contentContainerStyle={{ padding: 5, paddingBottom: bottomPadding }}
         showsVerticalScrollIndicator={false}
-        ListEmptyComponent={<Text style={styles.emptyText}>{t('noItemsCategory')}</Text>}
+        ListEmptyComponent={<Text style={styles.emptyText}>{searchText ? "No items match your search" : t('noItemsCategory')}</Text>}
       />
 
-      {/* ADD BUTTON */}
-      <View
-        style={[
-          styles.addButtonContainer,
-          { bottom: buttonBottomPosition },
-        ]}
-      >
-        <TouchableOpacity
-          style={[styles.addButton, isLandscape && { paddingVertical: 10 }]}
-          onPress={openAddModal}
-        >
-          <Text style={[styles.addButtonText, isLandscape && { fontSize: 14 }]}>
-            {t('addNewItem')}
-          </Text>
+      <View style={[styles.addButtonContainer, { bottom: safeBottom + 10 }]}>
+        <TouchableOpacity style={styles.addButton} onPress={openAddModal}>
+          <Text style={styles.addButtonText}>{t('addNewItem')}</Text>
         </TouchableOpacity>
       </View>
 
       {/* ITEM MODAL */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
-          <View
-            style={[
-              styles.modalContent,
-              { maxHeight: height * 0.85 },
-              isLandscape && { width: '70%', maxHeight: height * 0.9 },
-            ]}
-          >
+      <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text
-                style={[
-                  styles.modalTitle,
-                  isLandscape && { fontSize: 18, marginBottom: 15 },
-                ]}
-              >
-                {editingItem ? t('editItem') : t('addNewItem')}
-              </Text>
+              <Text style={styles.modalTitle}>{editingItem ? t('editItem') : t('addNewItem')}</Text>
+              
+              <TouchableOpacity style={styles.imagePicker} onPress={showImageOptions}>
+                {itemImage ? <Image source={{ uri: itemImage }} style={styles.imagePreview} /> : <Text>📸 Tap to add image</Text>}
+              </TouchableOpacity>
 
-              <View style={isLandscape ? { flexDirection: 'row' } : {}}>
-                <View style={isLandscape ? { flex: 1, marginRight: 15 } : {}}>
-                  <Text style={styles.inputLabel}>Item Image</Text>
-                  <TouchableOpacity
-                    style={[styles.imagePickerButton, isLandscape && { marginBottom: 10 }]}
-                    onPress={showImageOptions}
-                  >
-                    {itemImage ? (
-                      <Image
-                        source={{ uri: itemImage }}
-                        style={[styles.previewImage, isLandscape && { height: 100 }]}
-                      />
-                    ) : (
-                      <View
-                        style={[
-                          styles.imagePlaceholder,
-                          isLandscape && { height: 80 },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.imagePlaceholderEmoji,
-                            isLandscape && { fontSize: 28 },
-                          ]}
-                        >
-                          📷
-                        </Text>
-                        <Text style={styles.imagePlaceholderText}>Tap to add image</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
+              <Text style={styles.inputLabel}>{t('itemName')}</Text>
+              <TextInput style={styles.input} value={itemName} onChangeText={setItemName} placeholder={t('enterItemName')} />
 
-                <View style={isLandscape ? { flex: 1 } : {}}>
-                  <Text style={styles.inputLabel}>{t('itemName')}</Text>
-                  <TextInput
-                    style={[styles.input, isLandscape && { padding: 10 }]}
-                    value={itemName}
-                    onChangeText={setItemName}
-                    placeholder={t('enterItemName')}
-                    placeholderTextColor="#999"
-                  />
-
-                  <Text style={styles.inputLabel}>Base {t('price')} (₹)</Text>
-                  <TextInput
-                    style={[styles.input, isLandscape && { padding: 10 }]}
-                    value={itemPrice}
-                    onChangeText={setItemPrice}
-                    placeholder={t('enterPrice')}
-                    keyboardType="numeric"
-                    placeholderTextColor="#999"
-                  />
-                </View>
-              </View>
+              <Text style={styles.inputLabel}>{t('price')} (₹)</Text>
+              <TextInput style={styles.input} value={itemPrice} onChangeText={setItemPrice} keyboardType="numeric" />
 
               <Text style={styles.inputLabel}>{t('category')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.categoryChipsContainer}>
-                  {categories
-                    .filter((c) => c !== 'All')
-                    .map((category) => (
-                      <TouchableOpacity
-                        key={category}
-                        style={[
-                          styles.categoryChip,
-                          itemCategory === category && styles.categoryChipActive,
-                        ]}
-                        onPress={() => setItemCategory(category)}
-                      >
-                        <Text
-                          style={[
-                            styles.categoryChipText,
-                            itemCategory === category && styles.categoryChipTextActive,
-                          ]}
-                        >
-                          {getCategoryName(category)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                  {categories.filter(c => c !== 'All').map(cat => (
+                    <TouchableOpacity key={cat} style={[styles.categoryChip, itemCategory === cat && styles.categoryChipActive]} onPress={() => setItemCategory(cat)}>
+                      <Text style={[styles.categoryChipText, itemCategory === cat && { color: '#fff' }]}>{getCategoryName(cat)}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               </ScrollView>
 
               <View style={styles.variantToggle}>
-                <View>
-                  <Text style={styles.inputLabel}>Has Variants/Sub-items?</Text>
-                  <Text style={styles.variantHint}>
-                    E.g., Chicken/Beef/Fish options
-                  </Text>
-                </View>
-                <Switch
-                  value={hasVariants}
-                  onValueChange={setHasVariants}
-                  trackColor={{ false: '#ddd', true: '#8B0000' }}
-                  thumbColor={hasVariants ? '#fff' : '#f4f3f4'}
-                />
+                <View><Text style={styles.inputLabel}>Has Variants?</Text></View>
+                <Switch value={hasVariants} onValueChange={setHasVariants} trackColor={{ false: '#ddd', true: '#8B0000' }} />
               </View>
 
               {hasVariants && (
                 <View style={styles.variantsSection}>
-                  <Text style={styles.variantsSectionTitle}>
-                    Variants ({variants.length})
-                  </Text>
-                  {variants.map((variant, index) => (
-                    <View key={variant.id} style={styles.variantItem}>
-                      <View style={styles.variantInfo}>
-                        <Text style={styles.variantName}>{variant.name}</Text>
-                        <Text style={styles.variantPriceText}>₹{variant.price}</Text>
-                      </View>
-                      <View style={styles.variantActions}>
-                        <TouchableOpacity
-                          style={styles.variantEditBtn}
-                          onPress={() => openVariantModal(variant, index)}
-                        >
-                          <Text>✏️</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.variantDeleteBtn}
-                          onPress={() => deleteVariant(index)}
-                        >
-                          <Text>🗑️</Text>
-                        </TouchableOpacity>
-                      </View>
+                  <Text style={{ fontWeight: 'bold', marginBottom: 10 }}>Variants ({variants.length})</Text>
+                  {variants.map((v, idx) => (
+                    <View key={v.id} style={styles.variantRow}>
+                      <Text style={{ flex: 1 }}>{v.name} - ₹{v.price}</Text>
+                      <TouchableOpacity onPress={() => openVariantModal(v, idx)}><Text style={{ marginRight: 15 }}>✏️</Text></TouchableOpacity>
+                      <TouchableOpacity onPress={() => { const u = variants.filter((_, i) => i !== idx); setVariants(u); }}><Text>🗑️</Text></TouchableOpacity>
                     </View>
                   ))}
-                  <TouchableOpacity
-                    style={styles.addVariantButton}
-                    onPress={() => openVariantModal()}
-                  >
-                    <Text style={styles.addVariantButtonText}>+ Add Variant</Text>
-                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.addVarBtn} onPress={() => openVariantModal()}><Text style={{ color: '#fff' }}>+ Add Variant</Text></TouchableOpacity>
                 </View>
               )}
 
               <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.cancelButton, isLandscape && { padding: 12 }]}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={styles.cancelButtonText}>{t('cancel')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.saveButton, isLandscape && { padding: 12 }]}
-                  onPress={saveItem}
-                >
-                  <Text style={styles.saveButtonText}>{t('save')}</Text>
-                </TouchableOpacity>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}><Text>{t('cancel')}</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtn} onPress={saveItem}><Text style={{ color: '#fff', fontWeight: 'bold' }}>{t('save')}</Text></TouchableOpacity>
               </View>
             </ScrollView>
           </View>
@@ -552,55 +348,15 @@ export default function MenuScreen() {
       </Modal>
 
       {/* VARIANT MODAL */}
-      <Modal
-        visible={variantModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setVariantModalVisible(false)}
-      >
+      <Modal visible={variantModalVisible} animationType="fade" transparent={true}>
         <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.variantModalContent,
-              isLandscape && { width: '50%' },
-            ]}
-          >
-            <Text style={[styles.modalTitle, isLandscape && { fontSize: 18 }]}>
-              {editingVariant ? 'Edit Variant' : 'Add Variant'}
-            </Text>
-
-            <Text style={styles.inputLabel}>Variant Name</Text>
-            <TextInput
-              style={[styles.input, isLandscape && { padding: 10 }]}
-              value={variantName}
-              onChangeText={setVariantName}
-              placeholder="e.g., Chicken Biriyani"
-              placeholderTextColor="#999"
-            />
-
-            <Text style={styles.inputLabel}>Price (₹)</Text>
-            <TextInput
-              style={[styles.input, isLandscape && { padding: 10 }]}
-              value={variantPrice}
-              onChangeText={setVariantPrice}
-              placeholder="e.g., 150"
-              placeholderTextColor="#999"
-              keyboardType="numeric"
-            />
-
+          <View style={[styles.modalContent, { width: '80%' }]}>
+            <Text style={styles.modalTitle}>{editingVariant ? 'Edit Variant' : 'Add Variant'}</Text>
+            <TextInput style={styles.input} value={variantName} onChangeText={setVariantName} placeholder="Variant Name" />
+            <TextInput style={styles.input} value={variantPrice} onChangeText={setVariantPrice} placeholder="Price" keyboardType="numeric" />
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.cancelButton, isLandscape && { padding: 12 }]}
-                onPress={() => setVariantModalVisible(false)}
-              >
-                <Text style={styles.cancelButtonText}>{t('cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.saveButton, isLandscape && { padding: 12 }]}
-                onPress={saveVariant}
-              >
-                <Text style={styles.saveButtonText}>{t('save')}</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={{ flex: 1, padding: 15 }} onPress={() => setVariantModalVisible(false)}><Text>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.saveBtn, { flex: 1 }]} onPress={saveVariant}><Text style={{ color: '#fff' }}>Add</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -609,360 +365,51 @@ export default function MenuScreen() {
   );
 }
 
-// STYLES
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
-
-  searchContainer: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    backgroundColor: '#f5f5f5',
-  },
-  searchInput: {
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    paddingHorizontal: 15,
-    paddingVertical: Platform.OS === 'ios' ? 8 : 6,
-    fontSize: 14,
-  },
-
-  categoryScroll: {
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  categoryContent: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  categoryButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    marginRight: 8,
-  },
-  categoryButtonActive: {
-    backgroundColor: '#8B0000',
-  },
-  categoryText: {
-    color: '#666',
-    fontWeight: '600',
-    fontSize: 12,
-  },
-  categoryTextActive: {
-    color: '#fff',
-  },
-
-  itemCount: {
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    color: '#666',
-    fontSize: 12,
-  },
-  listContainer: {
-    paddingHorizontal: 10,
-  },
-
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 10,
-    borderRadius: 12,
-    marginBottom: 10,
-    elevation: 2,
-  },
-  menuItemLandscape: {
-    margin: 5,
-    marginBottom: 10,
-  },
-  imageContainer: {
-    position: 'relative',
-  },
-  itemImage: {
-    width: 55,
-    height: 55,
-    borderRadius: 10,
-    backgroundColor: '#f0f0f0',
-  },
-  itemImageLandscape: {
-    width: 45,
-    height: 45,
-  },
-  placeholderImage: {
-    width: 55,
-    height: 55,
-    borderRadius: 10,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    fontSize: 22,
-  },
-  variantBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    backgroundColor: '#8B0000',
-    borderRadius: 10,
-    width: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  variantBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  itemInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  itemName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#333',
-  },
-  itemCategory: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 2,
-  },
-  variantCount: {
-    fontSize: 11,
-    color: '#8B0000',
-    marginTop: 2,
-  },
-  itemPrice: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#8B0000',
-    marginRight: 10,
-  },
-  deleteButton: {
-    padding: 8,
-  },
-  buttonText: {
-    fontSize: 18,
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: '#999',
-    marginTop: 50,
-    fontStyle: 'italic',
-  },
-
-  addButtonContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    paddingHorizontal: 15,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  addButton: {
-    backgroundColor: '#8B0000',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  addButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    width: '92%',
-  },
-  variantModalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    width: '85%',
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  inputLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-    marginTop: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 15,
-    color: '#333',
-    backgroundColor: '#fafafa',
-  },
-  imagePickerButton: {
-    borderWidth: 2,
-    borderColor: '#ddd',
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  previewImage: {
-    width: '100%',
-    height: 140,
-    resizeMode: 'cover',
-  },
-  imagePlaceholder: {
-    height: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f9f9f9',
-  },
-  imagePlaceholderEmoji: {
-    fontSize: 36,
-  },
-  imagePlaceholderText: {
-    color: '#999',
-    marginTop: 8,
-    fontSize: 12,
-  },
-  categoryChipsContainer: {
-    flexDirection: 'row',
-    paddingVertical: 5,
-  },
-  categoryChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    marginRight: 8,
-  },
-  categoryChipActive: {
-    backgroundColor: '#8B0000',
-  },
-  categoryChipText: {
-    color: '#666',
-    fontSize: 13,
-  },
-  categoryChipTextActive: {
-    color: '#fff',
-  },
-  variantToggle: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 15,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  variantHint: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 2,
-  },
-  variantsSection: {
-    marginTop: 15,
-    padding: 12,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 10,
-  },
-  variantsSectionTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  variantItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  variantInfo: {
-    flex: 1,
-  },
-  variantName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333',
-  },
-  variantPriceText: {
-    fontSize: 13,
-    color: '#8B0000',
-    marginTop: 2,
-  },
-  variantActions: {
-    flexDirection: 'row',
-  },
-  variantEditBtn: {
-    padding: 8,
-    marginRight: 5,
-  },
-  variantDeleteBtn: {
-    padding: 8,
-  },
-  addVariantButton: {
-    backgroundColor: '#4CAF50',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  addVariantButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    marginTop: 25,
-  },
-  cancelButton: {
-    flex: 1,
-    padding: 15,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    marginRight: 10,
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  saveButton: {
-    flex: 1,
-    padding: 15,
-    borderRadius: 10,
-    backgroundColor: '#8B0000',
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  searchBarContainer: { padding: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  searchWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f0f0', borderRadius: 20, paddingHorizontal: 15, height: 45 },
+  searchInput: { flex: 1, fontSize: 15 },
+  clearIcon: { fontWeight: 'bold', color: '#999', padding: 5, fontSize: 18 },
+  categoryContent: { paddingHorizontal: 10, alignItems: 'center' },
+  categoryButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f0f0f0', marginRight: 8 },
+  categoryButtonActive: { backgroundColor: '#8B0000' },
+  categoryText: { color: '#666', fontWeight: '600' },
+  categoryTextActive: { color: '#fff' },
+  itemCount: { paddingHorizontal: 15, paddingVertical: 8, color: '#666', fontSize: 12 },
+  menuCard: { backgroundColor: '#fff', borderRadius: 12, elevation: 3, overflow: 'hidden' },
+  cardImageContainer: { position: 'relative' },
+  cardImage: { width: '100%', resizeMode: 'cover' },
+  cardPlaceholder: { width: '100%', backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center' },
+  deleteBadge: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(255,0,0,0.7)', borderRadius: 12, width: 24, height: 24, justifyContent: 'center', alignItems: 'center' },
+  deleteBadgeText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+  variantBadge: { position: 'absolute', top: 5, left: 5, backgroundColor: '#8B0000', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center' },
+  variantBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  cardInfo: { padding: 10 },
+  cardName: { fontSize: 14, fontWeight: 'bold', color: '#333' },
+  cardPrice: { color: '#8B0000', fontWeight: 'bold', marginTop: 2 },
+  editIndicator: { backgroundColor: '#f0f0f0', padding: 5, alignItems: 'center' },
+  editIndicatorText: { fontSize: 10, color: '#999' },
+  addButtonContainer: { position: 'absolute', left: 20, right: 20 },
+  addButton: { backgroundColor: '#8B0000', padding: 16, borderRadius: 12, alignItems: 'center', elevation: 5 },
+  addButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  emptyText: { textAlign: 'center', marginTop: 50, color: '#999' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 20 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  imagePicker: { height: 120, backgroundColor: '#f0f0f0', borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+  imagePreview: { width: '100%', height: '100%', borderRadius: 12 },
+  inputLabel: { fontSize: 14, color: '#666', marginBottom: 5, marginTop: 10 },
+  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 10, padding: 12, marginBottom: 15 },
+  categoryChipsContainer: { flexDirection: 'row', paddingVertical: 5 },
+  categoryChip: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f0f0f0', marginRight: 8 },
+  categoryChipActive: { backgroundColor: '#8B0000' },
+  categoryChipText: { fontSize: 13, color: '#666' },
+  variantToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
+  variantsSection: { backgroundColor: '#f9f9f9', padding: 10, borderRadius: 10, marginBottom: 15 },
+  variantRow: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
+  addVarBtn: { backgroundColor: '#4CAF50', padding: 10, borderRadius: 8, alignItems: 'center', marginTop: 10 },
+  modalButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
+  cancelBtn: { flex: 1, padding: 15, alignItems: 'center' },
+  saveBtn: { flex: 1, padding: 15, backgroundColor: '#8B0000', borderRadius: 10, alignItems: 'center' }
 });

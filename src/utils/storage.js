@@ -278,6 +278,24 @@ export const clearOrderHistory = async () => {
   }
 };
 
+/**
+ * Removes a specific order by ID
+ * @param {string} orderId 
+ */
+export const removeOrderFromHistory = async (orderId) => {
+  try {
+    const data = await AsyncStorage.getItem(ORDERS_KEY);
+    if (!data) return false;
+    const history = JSON.parse(data);
+    const updated = history.filter((o) => o.id !== orderId);
+    await AsyncStorage.setItem(ORDERS_KEY, JSON.stringify(updated));
+    return true;
+  } catch (error) {
+    console.log('Error removing order:', error);
+    return false;
+  }
+};
+
 export const getTodaysSales = async () => {
   try {
     const orders = await loadOrderHistory();
@@ -292,7 +310,6 @@ export const getTodaysSales = async () => {
 };
 
 // ============ EXPENSES ============
-// For feature 5: expense tracking
 
 export const addExpense = async ({ date, category, description, amount }) => {
   try {
@@ -301,7 +318,7 @@ export const addExpense = async ({ date, category, description, amount }) => {
     const dateStr = date || now.toLocaleDateString('en-IN');
     const timeStr = now.toLocaleTimeString('en-IN');
     const newExpense = {
-      id: Date.now().toString(),
+      id: Date.now().toString(), // Unique ID for deletion
       date: dateStr,
       time: timeStr,
       category: (category || 'General').trim(),
@@ -352,7 +369,6 @@ export const clearExpenses = async () => {
 };
 
 // ============ BACKUP / RESTORE ============
-// For feature 6
 
 export const createBackupObject = async () => {
   try {
