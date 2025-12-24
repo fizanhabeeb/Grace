@@ -1,5 +1,5 @@
 // src/utils/storage.js
-// Central storage: menu, orders, settings, expenses, backup
+// Central storage: menu, orders, settings, expenses, backup tracking
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -9,6 +9,7 @@ const ORDERS_KEY = 'hotel_grace_orders';
 const CURRENT_ORDER_KEY = 'hotel_grace_current_order';
 const SETTINGS_KEY = 'hotel_grace_settings';
 const EXPENSES_KEY = 'hotel_grace_expenses';
+const LAST_BACKUP_KEY = 'hotel_grace_last_backup';
 
 // ============ SETTINGS ============
 
@@ -60,7 +61,6 @@ export const updateSetting = async (key, value) => {
 
 const getDefaultMenu = () => {
   return [
-    // Breakfast Items
     { id: '1', name: 'Appam', price: 15, category: 'Breakfast', image: null, hasVariants: false, variants: [] },
     { id: '2', name: 'Puttu', price: 25, category: 'Breakfast', image: null, hasVariants: true,
       variants: [
@@ -78,8 +78,6 @@ const getDefaultMenu = () => {
     },
     { id: '5', name: 'Idiyappam (3 pcs)', price: 30, category: 'Breakfast', image: null, hasVariants: false, variants: [] },
     { id: '6', name: 'Chapati', price: 15, category: 'Breakfast', image: null, hasVariants: false, variants: [] },
-
-    // Rice Items
     { id: '7', name: 'Meals', price: 60, category: 'Rice', image: null, hasVariants: true,
       variants: [
         { id: 'v7a', name: 'Veg Meals', price: 60 },
@@ -103,8 +101,6 @@ const getDefaultMenu = () => {
       ]
     },
     { id: '10', name: 'Ghee Rice', price: 80, category: 'Rice', image: null, hasVariants: false, variants: [] },
-
-    // Curry Items
     { id: '11', name: 'Egg Curry', price: 40, category: 'Curry', image: null, hasVariants: false, variants: [] },
     { id: '12', name: 'Chicken Curry', price: 100, category: 'Curry', image: null, hasVariants: true,
       variants: [
@@ -128,8 +124,6 @@ const getDefaultMenu = () => {
     },
     { id: '15', name: 'Kadala Curry', price: 35, category: 'Curry', image: null, hasVariants: false, variants: [] },
     { id: '16', name: 'Sambar', price: 25, category: 'Curry', image: null, hasVariants: false, variants: [] },
-
-    // Snacks
     { id: '17', name: 'Parotta', price: 20, category: 'Snacks', image: null, hasVariants: true,
       variants: [
         { id: 'v17a', name: 'Plain Parotta', price: 20 },
@@ -140,8 +134,6 @@ const getDefaultMenu = () => {
     { id: '18', name: 'Egg Puffs', price: 25, category: 'Snacks', image: null, hasVariants: false, variants: [] },
     { id: '19', name: 'Pazham Pori', price: 20, category: 'Snacks', image: null, hasVariants: false, variants: [] },
     { id: '20', name: 'Uzhunnu Vada', price: 15, category: 'Snacks', image: null, hasVariants: false, variants: [] },
-
-    // Beverages
     { id: '21', name: 'Chai', price: 15, category: 'Beverages', image: null, hasVariants: true,
       variants: [
         { id: 'v21a', name: 'Chai', price: 15 },
@@ -168,7 +160,6 @@ export const saveMenu = async (menuItems) => {
     await AsyncStorage.setItem(MENU_KEY, JSON.stringify(menuItems));
     return true;
   } catch (error) {
-    console.log('Error saving menu:', error);
     return false;
   }
 };
@@ -187,7 +178,6 @@ export const loadMenu = async () => {
     }
     return getDefaultMenu();
   } catch (error) {
-    console.log('Error loading menu:', error);
     return getDefaultMenu();
   }
 };
@@ -198,7 +188,6 @@ export const resetMenuToDefault = async () => {
     await AsyncStorage.setItem(MENU_KEY, JSON.stringify(def));
     return def;
   } catch (error) {
-    console.log('Error resetting menu:', error);
     return getDefaultMenu();
   }
 };
@@ -210,7 +199,6 @@ export const saveCurrentOrder = async (orderItems) => {
     await AsyncStorage.setItem(CURRENT_ORDER_KEY, JSON.stringify(orderItems));
     return true;
   } catch (error) {
-    console.log('Error saving current order:', error);
     return false;
   }
 };
@@ -220,7 +208,6 @@ export const loadCurrentOrder = async () => {
     const data = await AsyncStorage.getItem(CURRENT_ORDER_KEY);
     return data ? JSON.parse(data) : [];
   } catch (error) {
-    console.log('Error loading current order:', error);
     return [];
   }
 };
@@ -230,40 +217,59 @@ export const clearCurrentOrder = async () => {
     await AsyncStorage.removeItem(CURRENT_ORDER_KEY);
     return true;
   } catch (error) {
-    console.log('Error clearing current order:', error);
     return false;
   }
 };
 
-// ============ ORDER HISTORY ============
+// ============ ORDER HISTORY (OPTIMIZED) ============
 
 export const saveOrderToHistory = async (order) => {
   try {
-    const existing = await loadOrderHistory();
+    const existing = await loadOrderHistory(true); // Load all for saving
     const now = new Date();
+    
+    // Applying Rounding Logic to Grand Total
+    const rawTotal = order.grandTotal || 0;
+    const roundedTotal = Math.round(rawTotal);
+    const roundOffDiff = roundedTotal - rawTotal;
+
     const newOrder = {
       ...order,
       id: Date.now().toString(),
       date: now.toLocaleDateString('en-IN'),
       time: now.toLocaleTimeString('en-IN'),
+      grandTotal: roundedTotal,
+      roundOff: roundOffDiff, // Storing the difference for the Tax Invoice
     };
     const updated = [newOrder, ...existing];
     await AsyncStorage.setItem(ORDERS_KEY, JSON.stringify(updated));
     return newOrder;
   } catch (error) {
-    console.log('Error saving order to history:', error);
+    console.log('Error saving order:', error);
     return null;
   }
 };
 
-export const loadOrderHistory = async () => {
+// IMPROVEMENT: Date-Limited Loading (Default: Last 30 Days)
+export const loadOrderHistory = async (fetchAll = false) => {
   try {
     const data = await AsyncStorage.getItem(ORDERS_KEY);
     if (!data) return [];
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
+    
+    if (fetchAll) return parsed;
+
+    // Filter logic: Return only last 30 days by default for performance
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    return parsed.filter(order => {
+      const parts = order.date.split('/');
+      if (parts.length !== 3) return false;
+      const orderDate = new Date(parts[2], parts[1] - 1, parts[0]);
+      return orderDate >= thirtyDaysAgo;
+    });
   } catch (error) {
-    console.log('Error loading order history:', error);
     return [];
   }
 };
@@ -273,15 +279,10 @@ export const clearOrderHistory = async () => {
     await AsyncStorage.removeItem(ORDERS_KEY);
     return true;
   } catch (error) {
-    console.log('Error clearing history:', error);
     return false;
   }
 };
 
-/**
- * Removes a specific order by ID
- * @param {string} orderId 
- */
 export const removeOrderFromHistory = async (orderId) => {
   try {
     const data = await AsyncStorage.getItem(ORDERS_KEY);
@@ -291,7 +292,6 @@ export const removeOrderFromHistory = async (orderId) => {
     await AsyncStorage.setItem(ORDERS_KEY, JSON.stringify(updated));
     return true;
   } catch (error) {
-    console.log('Error removing order:', error);
     return false;
   }
 };
@@ -304,7 +304,6 @@ export const getTodaysSales = async () => {
     const total = todays.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
     return { count: todays.length, total };
   } catch (error) {
-    console.log('Error getting today sales:', error);
     return { count: 0, total: 0 };
   }
 };
@@ -318,7 +317,7 @@ export const addExpense = async ({ date, category, description, amount }) => {
     const dateStr = date || now.toLocaleDateString('en-IN');
     const timeStr = now.toLocaleTimeString('en-IN');
     const newExpense = {
-      id: Date.now().toString(), // Unique ID for deletion
+      id: Date.now().toString(),
       date: dateStr,
       time: timeStr,
       category: (category || 'General').trim(),
@@ -329,7 +328,6 @@ export const addExpense = async ({ date, category, description, amount }) => {
     await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(updated));
     return newExpense;
   } catch (error) {
-    console.log('Error adding expense:', error);
     return null;
   }
 };
@@ -341,7 +339,6 @@ export const loadExpenses = async () => {
     const parsed = JSON.parse(data);
     return Array.isArray(parsed) ? parsed : [];
   } catch (error) {
-    console.log('Error loading expenses:', error);
     return [];
   }
 };
@@ -353,7 +350,6 @@ export const removeExpense = async (id) => {
     await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(updated));
     return true;
   } catch (error) {
-    console.log('Error removing expense:', error);
     return false;
   }
 };
@@ -363,7 +359,6 @@ export const clearExpenses = async () => {
     await AsyncStorage.removeItem(EXPENSES_KEY);
     return true;
   } catch (error) {
-    console.log('Error clearing expenses:', error);
     return false;
   }
 };
@@ -374,7 +369,7 @@ export const createBackupObject = async () => {
   try {
     const [menu, orders, expenses, settings] = await Promise.all([
       loadMenu(),
-      loadOrderHistory(),
+      loadOrderHistory(true), // Full history for backup
       loadExpenses(),
       loadSettings(),
     ]);
@@ -387,7 +382,6 @@ export const createBackupObject = async () => {
       settings,
     };
   } catch (error) {
-    console.log('Error creating backup object:', error);
     throw error;
   }
 };
@@ -412,7 +406,17 @@ export const restoreFromBackupObject = async (backup) => {
     await AsyncStorage.removeItem(CURRENT_ORDER_KEY);
     return true;
   } catch (error) {
-    console.log('Error restoring from backup:', error);
     throw error;
   }
+};
+
+// ============ BACKUP TRACKING ============
+
+export const updateLastBackupTimestamp = async () => {
+  await AsyncStorage.setItem(LAST_BACKUP_KEY, Date.now().toString());
+};
+
+export const getLastBackupTimestamp = async () => {
+  const ts = await AsyncStorage.getItem(LAST_BACKUP_KEY);
+  return ts ? parseInt(ts) : null;
 };

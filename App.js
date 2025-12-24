@@ -21,8 +21,8 @@ import ReportsScreen from './src/screens/ReportsScreen';
 const Tab = createBottomTabNavigator();
 
 function TabNavigator() {
-  const { t, language, setLanguage } = useLanguage();
-  const insets = useSafeAreaInsets(); // Hook to get safe area measurements
+  const { t, language, toggleLanguage } = useLanguage(); // Fixed: Use toggleLanguage
+  const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
@@ -39,7 +39,7 @@ function TabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        // SAFE AREA FIX: Dynamic height based on system bars
+        // SAFE AREA FIX
         tabBarActiveTintColor: '#8B0000',
         tabBarInactiveTintColor: '#888',
         tabBarStyle: {
@@ -51,7 +51,6 @@ function TabNavigator() {
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.1,
           shadowRadius: 10,
-          // Fixed height calculation to avoid system buttons
           height: Platform.OS === 'ios' ? 85 + insets.bottom : 70 + insets.bottom,
           paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
           paddingTop: 10,
@@ -71,9 +70,10 @@ function TabNavigator() {
           fontWeight: '800',
           fontSize: 18,
         },
+        // Fixed Language Toggle Logic
         headerRight: () => (
           <TouchableOpacity
-            onPress={() => setLanguage(language === 'en' ? 'ml' : 'en')}
+            onPress={toggleLanguage}
             style={styles.langButton}
           >
             <Text style={styles.langButtonText}>

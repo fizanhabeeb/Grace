@@ -1,3 +1,4 @@
+// src/screens/HomeScreen.js
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -17,7 +18,7 @@ import { getTodaysSales, loadOrderHistory } from '../utils/storage';
 export default function HomeScreen({ navigation }) {
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
-  const { width, height, isLandscape, isSmallScreen, isTablet } = useOrientation();
+  const { isLandscape, isSmallScreen, isTablet } = useOrientation();
   
   const [todaySales, setTodaySales] = useState({ count: 0, total: 0 });
   const [recentOrders, setRecentOrders] = useState([]);
@@ -81,111 +82,116 @@ export default function HomeScreen({ navigation }) {
   };
 
   return (
-    <ScrollView 
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={dynamicStyles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#8B0000']} />
-      }
-    >
-      {/* Header */}
-      <View style={[styles.header, dynamicStyles.header]}>
-        <View style={isLandscape ? {} : { alignItems: 'center' }}>
-          <Text style={styles.welcomeText}>{t('welcomeTo')}</Text>
-          <Text style={[styles.hotelName, dynamicStyles.hotelName]}>🏨 {t('hotelName')}</Text>
-          <Text style={styles.location}>📍 {t('location')}</Text>
-        </View>
-        <Text style={[styles.date, isLandscape && { marginTop: 0 }]}>{getCurrentDate()}</Text>
-      </View>
-
-      {/* Content Container */}
-      <View style={dynamicStyles.contentContainer}>
-        {/* Today's Summary */}
-        <View style={[styles.card, dynamicStyles.card]}>
-          <Text style={styles.sectionTitle}>📊 {t('todaysSummary')}</Text>
-          <View style={[styles.statsRow, dynamicStyles.statsRow]}>
-            <View style={[styles.statBox, isLandscape && !isTablet && { marginBottom: 8 }]}>
-              <Text style={styles.statNumber}>{todaySales.count}</Text>
-              <Text style={styles.statLabel}>{t('orders')}</Text>
-            </View>
-            <View style={[styles.statBox, styles.statBoxHighlight]}>
-              <Text style={[styles.statNumber, styles.statNumberHighlight]}>
-                ₹{todaySales.total.toFixed(2)}
-              </Text>
-              <Text style={[styles.statLabel, styles.statLabelHighlight]}>{t('totalSales')}</Text>
-            </View>
+    <View style={styles.mainWrapper}>
+      <ScrollView 
+        style={styles.container}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={dynamicStyles.container}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#8B0000']} />
+        }
+      >
+        {/* Header */}
+        <View style={[styles.header, dynamicStyles.header]}>
+          <View style={isLandscape ? {} : { alignItems: 'center' }}>
+            <Text style={styles.welcomeText}>{t('welcomeTo')}</Text>
+            <Text style={[styles.hotelName, dynamicStyles.hotelName]}>🏨 {t('hotelName')}</Text>
+            <Text style={styles.location}>📍 {t('location')}</Text>
           </View>
+          <Text style={[styles.date, isLandscape && { marginTop: 0 }]}>{getCurrentDate()}</Text>
         </View>
 
-        {/* Quick Actions */}
-        <View style={[styles.card, dynamicStyles.card]}>
-          <Text style={styles.sectionTitle}>⚡ {t('quickActions')}</Text>
-          <View style={styles.actionRow}>
-            <TouchableOpacity 
-              style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#4CAF50' }]}
-              onPress={() => navigation.navigate('Order')}
-            >
-              <Text style={styles.actionEmoji}>🛒</Text>
-              <Text style={styles.actionText}>{t('newOrder')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#2196F3' }]}
-              onPress={() => navigation.navigate('Menu')}
-            >
-              <Text style={styles.actionEmoji}>📋</Text>
-              <Text style={styles.actionText}>{t('editMenu')}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.actionRow}>
-            <TouchableOpacity 
-              style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#FF9800' }]}
-              onPress={() => navigation.navigate('Bill')}
-            >
-              <Text style={styles.actionEmoji}>🧾</Text>
-              <Text style={styles.actionText}>{t('viewBill')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#9C27B0' }]}
-              onPress={() => navigation.navigate('History')}
-            >
-              <Text style={styles.actionEmoji}>📊</Text>
-              <Text style={styles.actionText}>{t('history')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Recent Orders */}
-        <View style={[styles.card, dynamicStyles.card, isLandscape && isTablet && { width: '32%' }]}>
-          <Text style={styles.sectionTitle}>🕐 {t('recentOrders')}</Text>
-          {recentOrders.length === 0 ? (
-            <Text style={styles.noOrders}>{t('noOrdersYet')}</Text>
-          ) : (
-            recentOrders.slice(0, isLandscape ? 3 : 5).map((order, index) => (
-              <View key={order.id} style={styles.orderItem}>
-                <View style={styles.orderInfo}>
-                  <Text style={styles.orderNumber}>{t('order')} #{order.billNumber || index + 1}</Text>
-                  <Text style={styles.orderTime}>{order.time}</Text>
-                </View>
-                <Text style={styles.orderAmount}>₹{order.grandTotal.toFixed(2)}</Text>
+        {/* Content Container */}
+        <View style={dynamicStyles.contentContainer}>
+          {/* Today's Summary */}
+          <View style={[styles.card, dynamicStyles.card]}>
+            <Text style={styles.sectionTitle}>📊 {t('todaysSummary')}</Text>
+            <View style={[styles.statsRow, dynamicStyles.statsRow]}>
+              <View style={[styles.statBox, isLandscape && !isTablet && { marginBottom: 8 }]}>
+                <Text style={styles.statNumber}>{todaySales.count}</Text>
+                <Text style={styles.statLabel}>{t('orders')}</Text>
               </View>
-            ))
-          )}
-        </View>
-      </View>
+              <View style={[styles.statBox, styles.statBoxHighlight]}>
+                <Text style={[styles.statNumber, styles.statNumberHighlight]}>
+                  ₹{todaySales.total.toFixed(2)}
+                </Text>
+                <Text style={[styles.statLabel, styles.statLabelHighlight]}>{t('totalSales')}</Text>
+              </View>
+            </View>
+          </View>
 
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>{t('madeWithLove')}</Text>
-      </View>
-    </ScrollView>
+          {/* Quick Actions */}
+          <View style={[styles.card, dynamicStyles.card]}>
+            <Text style={styles.sectionTitle}>⚡ {t('quickActions')}</Text>
+            <View style={styles.actionRow}>
+              <TouchableOpacity 
+                style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#4CAF50' }]}
+                onPress={() => navigation.navigate('Order')}
+              >
+                <Text style={styles.actionEmoji}>🛒</Text>
+                <Text style={styles.actionText}>{t('newOrder')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#2196F3' }]}
+                onPress={() => navigation.navigate('Menu')}
+              >
+                <Text style={styles.actionEmoji}>📋</Text>
+                <Text style={styles.actionText}>{t('editMenu')}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.actionRow}>
+              <TouchableOpacity 
+                style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#FF9800' }]}
+                onPress={() => navigation.navigate('Bill')}
+              >
+                <Text style={styles.actionEmoji}>🧾</Text>
+                <Text style={styles.actionText}>{t('viewBill')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#9C27B0' }]}
+                onPress={() => navigation.navigate('History')}
+              >
+                <Text style={styles.actionEmoji}>📊</Text>
+                <Text style={styles.actionText}>{t('history')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Recent Orders */}
+          <View style={[styles.card, dynamicStyles.card, isLandscape && isTablet && { width: '32%' }]}>
+            <Text style={styles.sectionTitle}>🕐 {t('recentOrders')}</Text>
+            {recentOrders.length === 0 ? (
+              <Text style={styles.noOrders}>{t('noOrdersYet')}</Text>
+            ) : (
+              recentOrders.slice(0, isLandscape ? 3 : 5).map((order, index) => (
+                <View key={order.id} style={styles.orderItem}>
+                  <View style={styles.orderInfo}>
+                    <Text style={styles.orderNumber}>{t('order')} #{order.billNumber || index + 1}</Text>
+                    <Text style={styles.orderTime}>{order.time}</Text>
+                  </View>
+                  <Text style={styles.orderAmount}>₹{order.grandTotal.toFixed(2)}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        </View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>{t('madeWithLove')}</Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  mainWrapper: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
   container: { 
     flex: 1, 
-    backgroundColor: '#f5f5f5',
   },
   header: {
     backgroundColor: '#8B0000',

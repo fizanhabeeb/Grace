@@ -1,4 +1,6 @@
 // src/screens/ReportsScreen.js
+// Sales & profit summary + expenses + Cloud Backup + Sales Reconciliation + Unified Search + Close Day
+
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
@@ -14,7 +16,14 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
-import { loadOrderHistory, loadExpenses, addExpense, removeExpense, createBackupObject } from '../utils/storage';
+import { 
+  loadOrderHistory, 
+  loadExpenses, 
+  addExpense, 
+  removeExpense, 
+  createBackupObject,
+  updateLastBackupTimestamp 
+} from '../utils/storage';
 import { restoreAllData } from '../utils/backup';
 
 import * as Sharing from 'expo-sharing';
@@ -25,10 +34,10 @@ export default function ReportsScreen() {
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
 
-  const [period, setPeriod] = useState('today');
+  const [period, setPeriod] = useState('today'); // 'today' | 'week' | 'month' | 'all'
   const [orders, setOrders] = useState([]);
   const [expenses, setExpenses] = useState([]);
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = useState(''); 
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
   const [expenseCategory, setExpenseCategory] = useState('');
   const [expenseDescription, setExpenseDescription] = useState('');
@@ -89,29 +98,22 @@ export default function ReportsScreen() {
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
   const profit = totalSales - totalExpenses;
 
-  // FIX: Cloud Backup logic using Legacy FileSystem
+  // Cloud Backup logic using Legacy FileSystem
   const handleCloudBackup = async () => {
     try {
       const backupData = await createBackupObject();
-      
       if (!backupData || Object.keys(backupData).length === 0) {
         Alert.alert("No Data", "There is no data to back up yet.");
         return;
       }
-
-      // Generate file path
       const fileName = `Grace_POS_Backup_${new Date().getTime()}.json`;
       const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-      
-      // Convert data to string
       const jsonString = JSON.stringify(backupData);
       
-      // Write file using legacy method
       await FileSystem.writeAsStringAsync(fileUri, jsonString, {
         encoding: FileSystem.EncodingType.UTF8,
       });
 
-      // Share the file
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(fileUri, {
@@ -119,13 +121,42 @@ export default function ReportsScreen() {
           dialogTitle: 'Backup Hotel Grace Data',
           UTI: 'public.json'
         });
+        await updateLastBackupTimestamp();
       } else {
         Alert.alert("Error", "Sharing is not supported on this device.");
       }
     } catch (error) {
-      console.log("Backup Error Detail:", error);
       Alert.alert("Backup Failed", "Please check permissions and try again.");
     }
+  };
+
+  // NEW: Function to Close the Day professionally
+  const handleCloseDay = async () => {
+    const today = new Date().toLocaleDateString('en-IN');
+    const todayOrders = orders.filter(o => o.date === today);
+    if (todayOrders.length === 0) {
+      Alert.alert("No Sales", "No orders recorded for today yet.");
+      return;
+    }
+
+    const total = todayOrders.reduce((s, o) => s + (o.grandTotal || 0), 0);
+    const cash = todayOrders.filter(o => o.paymentMode === 'Cash' || !o.paymentMode).reduce((s, o) => s + (o.grandTotal || 0), 0);
+    const upi = todayOrders.filter(o => o.paymentMode === 'UPI').reduce((s, o) => s + (o.grandTotal || 0), 0);
+
+    Alert.alert(
+      "🏁 Close Day Summary",
+      `Total Sales: ₹${total.toFixed(2)}\nCash: ₹${cash.toFixed(2)}\nUPI: ₹${upi.toFixed(2)}\n\nWould you like to backup to Cloud and finish for today?`,
+      [
+        { text: "Not Now", style: "cancel" },
+        { 
+          text: "Backup & Close", 
+          onPress: async () => {
+            await handleCloudBackup();
+            Alert.alert("Success", "Day Closed. Dashboard will refresh tomorrow.");
+          } 
+        }
+      ]
+    );
   };
 
   const handleSaveExpense = async () => {
@@ -149,6 +180,7 @@ export default function ReportsScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Unified Search Header */}
       <View style={styles.headerContainer}>
         <View style={styles.searchWrapper}>
           <Text style={{ marginRight: 8 }}>🔍</Text>
@@ -180,6 +212,7 @@ export default function ReportsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 20 }} showsVerticalScrollIndicator={false}>
+        {/* Sales Reconciliation Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>💰 {t('salesSummary')}</Text>
           <View style={styles.row}><Text>Cash Sales:</Text><Text style={styles.bold}>₹{cashSales.toFixed(2)}</Text></View>
@@ -192,6 +225,7 @@ export default function ReportsScreen() {
           </View>
         </View>
 
+        {/* Profit Analysis Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>📉 Profit Analysis</Text>
           <View style={styles.row}><Text>Total Expenses:</Text><Text style={styles.bold}>₹{totalExpenses.toFixed(2)}</Text></View>
@@ -204,6 +238,16 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* NEW: CLOSE DAY CARD */}
+        <View style={[styles.card, { borderTopWidth: 5, borderTopColor: '#8B0000' }]}>
+          <Text style={styles.cardTitle}>🏁 Day-End Operations</Text>
+          <Text style={styles.infoText}>Finalize today's accounts and sync data to the cloud.</Text>
+          <TouchableOpacity style={styles.closeDayBtn} onPress={handleCloseDay}>
+            <Text style={styles.closeDayBtnText}>CLOSE TODAY'S BUSINESS</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Expense List Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>📑 Expense List</Text>
           {filteredExpenses.length === 0 ? (
@@ -225,6 +269,7 @@ export default function ReportsScreen() {
           )}
         </View>
 
+        {/* Cloud & Backup Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>☁️ Backup & Sync</Text>
           <Text style={styles.infoText}>Save your data to Google Drive, WhatsApp, or Email to prevent loss.</Text>
@@ -232,12 +277,18 @@ export default function ReportsScreen() {
             <Text style={styles.cloudBtnText}>Backup to Cloud / Google Drive</Text>
           </TouchableOpacity>
           <View style={styles.divider} />
-          <TouchableOpacity style={[styles.backupBtn, {backgroundColor: '#FF7043'}]} onPress={restoreAllData}>
+          <TouchableOpacity style={[styles.backupBtn, {backgroundColor: '#FF7043'}]} onPress={() => {
+            Alert.alert(t('restoreConfirmTitle'), t('restoreConfirmMessage'), [
+              { text: t('cancel'), style: 'cancel' },
+              { text: t('restoreDataLabel'), style: 'destructive', onPress: async () => { await restoreAllData(); loadData(); } },
+            ]);
+          }}>
             <Text style={{ color: '#fff', fontWeight: 'bold' }}>⏪ {t('restoreDataLabel')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
 
+      {/* Expense Modal */}
       <Modal visible={expenseModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -246,10 +297,10 @@ export default function ReportsScreen() {
               <TextInput style={styles.modalInput} value={expenseCategory} onChangeText={setExpenseCategory} placeholder="Category" />
               <TextInput style={styles.modalInput} value={expenseDescription} onChangeText={setExpenseDescription} placeholder="Description" />
               <TextInput style={[styles.modalInput, !isAmountValid && styles.inputError]} value={expenseAmount} onChangeText={(v) => {setExpenseAmount(v); setIsAmountValid(true);}} placeholder="Amount" keyboardType="numeric" />
-              <View style={styles.modalButtons}>
+              <div style={styles.modalButtons}>
                 <TouchableOpacity style={styles.modalCancelButton} onPress={() => setExpenseModalVisible(false)}><Text>{t('cancel')}</Text></TouchableOpacity>
                 <TouchableOpacity style={styles.modalSaveButton} onPress={handleSaveExpense}><Text>{t('save')}</Text></TouchableOpacity>
-              </View>
+              </div>
             </ScrollView>
           </View>
         </View>
@@ -283,6 +334,8 @@ const styles = StyleSheet.create({
   emptyText: { color: '#999', fontStyle: 'italic', textAlign: 'center', paddingVertical: 10 },
   deleteHint: { fontSize: 10, color: '#C62828', textAlign: 'right', marginTop: 2 },
   infoText: { fontSize: 13, color: '#666', marginBottom: 10 },
+  closeDayBtn: { backgroundColor: '#333', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10, borderWidth: 1, borderColor: '#000' },
+  closeDayBtnText: { color: '#fff', fontWeight: '900', letterSpacing: 1 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { backgroundColor: '#fff', borderRadius: 15, padding: 15, width: '90%', maxHeight: '80%' },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#8B0000', textAlign: 'center', marginBottom: 10 },
