@@ -12,14 +12,16 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
+import { useTheme } from '../context/ThemeContext'; // Theme Hook
 import useOrientation from '../utils/useOrientation';
 import { getTodaysSales, loadOrderHistory } from '../utils/storage';
 
 export default function HomeScreen({ navigation }) {
   const { t } = useLanguage();
+  const { theme, isDark } = useTheme(); // Use Theme
   const insets = useSafeAreaInsets();
   const { isLandscape, isSmallScreen, isTablet } = useOrientation();
-  
+   
   const [todaySales, setTodaySales] = useState({ count: 0, total: 0 });
   const [recentOrders, setRecentOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -48,7 +50,7 @@ export default function HomeScreen({ navigation }) {
     return new Date().toLocaleDateString('en-IN', options);
   };
 
-  // Dynamic styles based on orientation
+  // Dynamic styles based on orientation AND Theme
   const dynamicStyles = {
     container: {
       paddingBottom: Platform.OS === 'ios' ? insets.bottom + 20 : 30,
@@ -72,6 +74,9 @@ export default function HomeScreen({ navigation }) {
       width: isLandscape ? (isTablet ? '32%' : '48%') : '100%',
       marginHorizontal: isLandscape ? '0.5%' : 0,
       marginBottom: 12,
+      // Theme colors applied here
+      backgroundColor: theme.card,
+      shadowColor: isDark ? '#000' : '#000',
     },
     statsRow: {
       flexDirection: isLandscape && !isTablet ? 'column' : 'row',
@@ -79,20 +84,32 @@ export default function HomeScreen({ navigation }) {
     actionButton: {
       paddingVertical: isLandscape ? 12 : 16,
     },
+    statBox: {
+        backgroundColor: theme.statBox
+    }
   };
 
+  // Common Text Style helpers
+  const textStyle = { color: theme.text };
+  const subTextStyle = { color: theme.textSecondary };
+
   return (
-    <View style={styles.mainWrapper}>
+    <View style={[styles.mainWrapper, { backgroundColor: theme.background }]}>
       <ScrollView 
         style={styles.container}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={dynamicStyles.container}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#8B0000']} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            colors={[theme.primary]} 
+            tintColor={theme.primary} 
+          />
         }
       >
-        {/* Header */}
-        <View style={[styles.header, dynamicStyles.header]}>
+        {/* Header - Keeps primary color background */}
+        <View style={[styles.header, dynamicStyles.header, { backgroundColor: theme.primary }]}>
           <View style={isLandscape ? {} : { alignItems: 'center' }}>
             <Text style={styles.welcomeText}>{t('welcomeTo')}</Text>
             <Text style={[styles.hotelName, dynamicStyles.hotelName]}>🏨 {t('hotelName')}</Text>
@@ -105,13 +122,13 @@ export default function HomeScreen({ navigation }) {
         <View style={dynamicStyles.contentContainer}>
           {/* Today's Summary */}
           <View style={[styles.card, dynamicStyles.card]}>
-            <Text style={styles.sectionTitle}>📊 {t('todaysSummary')}</Text>
+            <Text style={[styles.sectionTitle, textStyle]}>📊 {t('todaysSummary')}</Text>
             <View style={[styles.statsRow, dynamicStyles.statsRow]}>
-              <View style={[styles.statBox, isLandscape && !isTablet && { marginBottom: 8 }]}>
-                <Text style={styles.statNumber}>{todaySales.count}</Text>
-                <Text style={styles.statLabel}>{t('orders')}</Text>
+              <View style={[styles.statBox, dynamicStyles.statBox, isLandscape && !isTablet && { marginBottom: 8 }]}>
+                <Text style={[styles.statNumber, textStyle]}>{todaySales.count}</Text>
+                <Text style={[styles.statLabel, subTextStyle]}>{t('orders')}</Text>
               </View>
-              <View style={[styles.statBox, styles.statBoxHighlight]}>
+              <View style={[styles.statBox, styles.statBoxHighlight, { backgroundColor: theme.primary }]}>
                 <Text style={[styles.statNumber, styles.statNumberHighlight]}>
                   ₹{todaySales.total.toFixed(2)}
                 </Text>
@@ -122,7 +139,7 @@ export default function HomeScreen({ navigation }) {
 
           {/* Quick Actions */}
           <View style={[styles.card, dynamicStyles.card]}>
-            <Text style={styles.sectionTitle}>⚡ {t('quickActions')}</Text>
+            <Text style={[styles.sectionTitle, textStyle]}>⚡ {t('quickActions')}</Text>
             <View style={styles.actionRow}>
               <TouchableOpacity 
                 style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#4CAF50' }]}
@@ -159,17 +176,17 @@ export default function HomeScreen({ navigation }) {
 
           {/* Recent Orders */}
           <View style={[styles.card, dynamicStyles.card, isLandscape && isTablet && { width: '32%' }]}>
-            <Text style={styles.sectionTitle}>🕐 {t('recentOrders')}</Text>
+            <Text style={[styles.sectionTitle, textStyle]}>🕐 {t('recentOrders')}</Text>
             {recentOrders.length === 0 ? (
               <Text style={styles.noOrders}>{t('noOrdersYet')}</Text>
             ) : (
               recentOrders.slice(0, isLandscape ? 3 : 5).map((order, index) => (
-                <View key={order.id} style={styles.orderItem}>
+                <View key={order.id} style={[styles.orderItem, { borderBottomColor: theme.border }]}>
                   <View style={styles.orderInfo}>
-                    <Text style={styles.orderNumber}>{t('order')} #{order.billNumber || index + 1}</Text>
-                    <Text style={styles.orderTime}>{order.time}</Text>
+                    <Text style={[styles.orderNumber, textStyle]}>{t('order')} #{order.billNumber || index + 1}</Text>
+                    <Text style={[styles.orderTime, subTextStyle]}>{order.time}</Text>
                   </View>
-                  <Text style={styles.orderAmount}>₹{order.grandTotal.toFixed(2)}</Text>
+                  <Text style={[styles.orderAmount, { color: theme.primary }]}>₹{order.grandTotal.toFixed(2)}</Text>
                 </View>
               ))
             )}
@@ -188,13 +205,11 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   mainWrapper: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   container: { 
     flex: 1, 
   },
   header: {
-    backgroundColor: '#8B0000',
     borderBottomLeftRadius: 25,
     borderBottomRightRadius: 25,
   },
@@ -222,11 +237,9 @@ const styles = StyleSheet.create({
     borderRadius: 15,
   },
   card: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 15,
     elevation: 3,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -234,7 +247,6 @@ const styles = StyleSheet.create({
   sectionTitle: { 
     fontSize: 16, 
     fontWeight: 'bold', 
-    color: '#333', 
     marginBottom: 12,
   },
   statsRow: { 
@@ -242,7 +254,6 @@ const styles = StyleSheet.create({
   },
   statBox: {
     flex: 1,
-    backgroundColor: '#f0f0f0',
     paddingVertical: 16,
     paddingHorizontal: 10,
     borderRadius: 10,
@@ -250,19 +261,17 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   statBoxHighlight: { 
-    backgroundColor: '#8B0000',
+    // Handled dynamically
   },
   statNumber: { 
     fontSize: 22, 
     fontWeight: 'bold', 
-    color: '#333',
   },
   statNumberHighlight: { 
     color: '#fff',
   },
   statLabel: { 
     fontSize: 12, 
-    color: '#666', 
     marginTop: 4,
   },
   statLabelHighlight: { 
@@ -301,7 +310,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
   orderInfo: { 
     flex: 1,
@@ -309,17 +317,14 @@ const styles = StyleSheet.create({
   orderNumber: { 
     fontSize: 15, 
     fontWeight: '600', 
-    color: '#333',
   },
   orderTime: { 
     fontSize: 11, 
-    color: '#999', 
     marginTop: 2,
   },
   orderAmount: { 
     fontSize: 17, 
     fontWeight: 'bold', 
-    color: '#8B0000',
   },
   footer: { 
     padding: 20, 

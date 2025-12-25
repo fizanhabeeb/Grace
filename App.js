@@ -1,6 +1,6 @@
 // App.js
 import React from 'react';
-import { StatusBar } from 'expo-status-bar';
+import { StatusBar } from 'expo-status-bar'; // Restored this import
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 // Context
 import { LanguageProvider, useLanguage } from './src/context/LanguageContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext'; 
 
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
@@ -21,13 +22,13 @@ import ReportsScreen from './src/screens/ReportsScreen';
 const Tab = createBottomTabNavigator();
 
 function TabNavigator() {
-  const { t, language, toggleLanguage } = useLanguage(); // Fixed: Use toggleLanguage
+  const { t, language, toggleLanguage } = useLanguage();
+  const { theme, toggleTheme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        // Dynamic Icons
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
           if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
@@ -39,13 +40,13 @@ function TabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        // SAFE AREA FIX
-        tabBarActiveTintColor: '#8B0000',
-        tabBarInactiveTintColor: '#888',
+        // Dynamic Theme Colors
+        tabBarActiveTintColor: theme.primary, 
+        tabBarInactiveTintColor: isDark ? '#888' : '#888',
         tabBarStyle: {
-          backgroundColor: '#ffffff',
+          backgroundColor: theme.card, 
           borderTopWidth: 1,
-          borderTopColor: '#eeeeee',
+          borderTopColor: theme.border,
           elevation: 20,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
@@ -61,25 +62,30 @@ function TabNavigator() {
           marginBottom: 5,
         },
         headerStyle: {
-          backgroundColor: '#8B0000',
+          backgroundColor: theme.primary,
           elevation: 0,
           shadowOpacity: 0,
         },
-        headerTintColor: '#fff',
+        headerTintColor: theme.headerText,
         headerTitleStyle: {
           fontWeight: '800',
           fontSize: 18,
         },
-        // Fixed Language Toggle Logic
+        // Combined Header Right: Theme Toggle + Language Toggle
         headerRight: () => (
-          <TouchableOpacity
-            onPress={toggleLanguage}
-            style={styles.langButton}
-          >
-            <Text style={styles.langButtonText}>
-              {language === 'en' ? 'മലയാളം' : 'English'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.headerRightContainer}>
+            {/* Theme Toggle */}
+            <TouchableOpacity onPress={toggleTheme} style={styles.iconButton}>
+              <Ionicons name={isDark ? "sunny" : "moon"} size={20} color="#fff" />
+            </TouchableOpacity>
+
+            {/* Language Toggle */}
+            <TouchableOpacity onPress={toggleLanguage} style={styles.langButton}>
+              <Text style={styles.langButtonText}>
+                {language === 'en' ? 'മലയാളം' : 'ENG'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         ),
       })}
     >
@@ -96,22 +102,35 @@ function TabNavigator() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <LanguageProvider>
-        <NavigationContainer>
-          <StatusBar style="light" />
-          <TabNavigator />
-        </NavigationContainer>
-      </LanguageProvider>
+      <ThemeProvider>
+        <LanguageProvider>
+          <NavigationContainer>
+            {/* Restored StatusBar with light style (white text) for the dark header */}
+            <StatusBar style="light" /> 
+            <TabNavigator />
+          </NavigationContainer>
+        </LanguageProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  langButton: {
+  headerRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginRight: 15,
+  },
+  iconButton: {
+    padding: 8,
+    marginRight: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 8,
+  },
+  langButton: {
     backgroundColor: 'rgba(255,255,255,0.2)',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 8,
     borderRadius: 8,
   },
   langButtonText: {
