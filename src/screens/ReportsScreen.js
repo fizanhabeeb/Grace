@@ -1,6 +1,4 @@
 // src/screens/ReportsScreen.js
-// Sales & profit summary + expenses + Cloud Backup + Sales Reconciliation + Unified Search + Close Day
-
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
@@ -16,6 +14,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
+import { useTheme } from '../context/ThemeContext'; // Theme Hook
 import { 
   loadOrderHistory, 
   loadExpenses, 
@@ -25,13 +24,12 @@ import {
   updateLastBackupTimestamp 
 } from '../utils/storage';
 import { restoreAllData } from '../utils/backup';
-
 import * as Sharing from 'expo-sharing';
-// UPDATED: Import from legacy to fix the deprecation error
 import * as FileSystem from 'expo-file-system/legacy'; 
 
 export default function ReportsScreen() {
   const { t } = useLanguage();
+  const { theme, isDark } = useTheme(); // Use Theme
   const insets = useSafeAreaInsets();
 
   const [period, setPeriod] = useState('today'); // 'today' | 'week' | 'month' | 'all'
@@ -58,12 +56,23 @@ export default function ReportsScreen() {
 
   const filterByPeriod = (dateStr) => {
     if (!dateStr) return false;
+    // Handle both ISO strings and localized date strings safely
     const today = new Date().toLocaleDateString('en-IN');
-    if (period === 'today') return dateStr === today;
     
-    const parts = dateStr.split('/');
-    if (parts.length !== 3) return false;
-    const d = new Date(parts[2], parts[1] - 1, parts[0]);
+    // Quick check for today string match
+    if (period === 'today') return dateStr.includes(today) || dateStr === today;
+    
+    // Parse date
+    let d;
+    if (dateStr.includes('/')) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) d = new Date(parts[2], parts[1] - 1, parts[0]);
+    } else {
+        d = new Date(dateStr);
+    }
+    
+    if (!d || isNaN(d.getTime())) return false; // Invalid date
+
     const now = new Date();
 
     if (period === 'week') {
@@ -94,11 +103,10 @@ export default function ReportsScreen() {
   }, [expenses, period, searchText]);
 
   const totalSales = filteredOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
-  const totalGst = filteredOrders.reduce((sum, o) => sum + (o.gst || 0), 0);
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
   const profit = totalSales - totalExpenses;
 
-  // Cloud Backup logic using Legacy FileSystem
+  // Cloud Backup logic
   const handleCloudBackup = async () => {
     try {
       const backupData = await createBackupObject();
@@ -130,12 +138,12 @@ export default function ReportsScreen() {
     }
   };
 
-  // NEW: Function to Close the Day professionally
   const handleCloseDay = async () => {
     const today = new Date().toLocaleDateString('en-IN');
-    const todayOrders = orders.filter(o => o.date === today);
+    const todayOrders = orders.filter(o => o.date && o.date.includes(today));
+    
     if (todayOrders.length === 0) {
-      Alert.alert("No Sales", "No orders recorded for today yet.");
+      Alert.alert(t('salesReport'), t('noOrdersYet'));
       return;
     }
 
@@ -144,15 +152,15 @@ export default function ReportsScreen() {
     const upi = todayOrders.filter(o => o.paymentMode === 'UPI').reduce((s, o) => s + (o.grandTotal || 0), 0);
 
     Alert.alert(
-      "🏁 Close Day Summary",
-      `Total Sales: ₹${total.toFixed(2)}\nCash: ₹${cash.toFixed(2)}\nUPI: ₹${upi.toFixed(2)}\n\nWould you like to backup to Cloud and finish for today?`,
+      t('dayEndOperations'),
+      `${t('totalSales')}: ₹${total.toFixed(2)}\nCash: ₹${cash.toFixed(2)}\nUPI: ₹${upi.toFixed(2)}\n\n${t('backupSubtitle')}`,
       [
-        { text: "Not Now", style: "cancel" },
+        { text: t('cancel'), style: "cancel" },
         { 
-          text: "Backup & Close", 
+          text: t('backupDrive'), 
           onPress: async () => {
             await handleCloudBackup();
-            Alert.alert("Success", "Day Closed. Dashboard will refresh tomorrow.");
+            Alert.alert(t('success'), "Day Closed.");
           } 
         }
       ]
@@ -163,12 +171,16 @@ export default function ReportsScreen() {
     const amountNum = parseFloat(expenseAmount);
     if (!expenseAmount || isNaN(amountNum)) {
       setIsAmountValid(false);
-      Alert.alert(t('error'), t('invalidAmountMessage'));
+      Alert.alert(t('error'), "Invalid Amount");
       return;
     }
     await addExpense({ category: expenseCategory || 'General', description: expenseDescription || '', amount: amountNum });
     setExpenseModalVisible(false);
     loadData();
+    // Reset form
+    setExpenseCategory('');
+    setExpenseDescription('');
+    setExpenseAmount('');
   };
 
   const handleDeleteExpense = (id) => {
@@ -178,21 +190,28 @@ export default function ReportsScreen() {
     ]);
   };
 
+  // Helper styles for Dark Mode
+  const cardStyle = [styles.card, { backgroundColor: theme.card }];
+  const textPrimary = { color: theme.text };
+  const textSecondary = { color: theme.textSecondary };
+  const inputStyle = [styles.modalInput, { backgroundColor: theme.inputBackground, color: theme.text, borderColor: theme.border }];
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Unified Search Header */}
-      <View style={styles.headerContainer}>
-        <View style={styles.searchWrapper}>
+      <View style={[styles.headerContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+        <View style={[styles.searchWrapper, { backgroundColor: theme.inputBackground }]}>
           <Text style={{ marginRight: 8 }}>🔍</Text>
           <TextInput 
-            style={styles.searchInput} 
-            placeholder="Search expenses..." 
+            style={[styles.searchInput, { color: theme.text }]} 
+            placeholder={t('search') || "Search..."} 
+            placeholderTextColor={theme.textSecondary}
             value={searchText} 
             onChangeText={setSearchText} 
           />
           {searchText !== '' && (
             <TouchableOpacity onPress={() => setSearchText('')}>
-              <Text style={styles.clearIcon}>✕</Text>
+              <Text style={[styles.clearIcon, { color: theme.textSecondary }]}>✕</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -200,10 +219,16 @@ export default function ReportsScreen() {
           {['today', 'week', 'month', 'all'].map((p) => (
             <TouchableOpacity
               key={p}
-              style={[styles.periodBtn, period === p && styles.periodBtnActive]}
+              style={[
+                styles.periodBtn, 
+                period === p ? { backgroundColor: theme.primary } : { backgroundColor: theme.inputBackground }
+              ]}
               onPress={() => setPeriod(p)}
             >
-              <Text style={[styles.periodText, period === p && { color: '#fff' }]}>
+              <Text style={[
+                styles.periodText, 
+                period === p ? { color: '#fff' } : { color: theme.text }
+              ]}>
                 {t(p === 'all' ? 'allTime' : p === 'week' ? 'thisWeek' : p === 'month' ? 'thisMonth' : 'today')}
               </Text>
             </TouchableOpacity>
@@ -213,55 +238,55 @@ export default function ReportsScreen() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 20 }} showsVerticalScrollIndicator={false}>
         {/* Sales Reconciliation Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>💰 {t('salesSummary')}</Text>
-          <View style={styles.row}><Text>Cash Sales:</Text><Text style={styles.bold}>₹{cashSales.toFixed(2)}</Text></View>
-          <View style={styles.row}><Text>UPI Sales:</Text><Text style={styles.bold}>₹{upiSales.toFixed(2)}</Text></View>
-          <View style={styles.row}><Text>Card Sales:</Text><Text style={styles.bold}>₹{cardSales.toFixed(2)}</Text></View>
-          <View style={styles.divider} />
+        <View style={cardStyle}>
+          <Text style={[styles.cardTitle, { color: theme.primary }]}>💰 {t('salesSummary')}</Text>
+          <View style={styles.row}><Text style={textSecondary}>Cash Sales:</Text><Text style={[styles.bold, textPrimary]}>₹{cashSales.toFixed(2)}</Text></View>
+          <View style={styles.row}><Text style={textSecondary}>UPI Sales:</Text><Text style={[styles.bold, textPrimary]}>₹{upiSales.toFixed(2)}</Text></View>
+          <View style={styles.row}><Text style={textSecondary}>Card Sales:</Text><Text style={[styles.bold, textPrimary]}>₹{cardSales.toFixed(2)}</Text></View>
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <View style={styles.row}>
-            <Text style={styles.grandBold}>{t('totalSales')}:</Text>
-            <Text style={styles.grandBold}>₹{totalSales.toFixed(2)}</Text>
+            <Text style={[styles.grandBold, { color: theme.primary }]}>{t('totalSales')}:</Text>
+            <Text style={[styles.grandBold, { color: theme.primary }]}>₹{totalSales.toFixed(2)}</Text>
           </View>
         </View>
 
         {/* Profit Analysis Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>📉 Profit Analysis</Text>
-          <View style={styles.row}><Text>Total Expenses:</Text><Text style={styles.bold}>₹{totalExpenses.toFixed(2)}</Text></View>
+        <View style={cardStyle}>
+          <Text style={[styles.cardTitle, { color: theme.primary }]}>📉 {t('profitAnalysis')}</Text>
+          <View style={styles.row}><Text style={textSecondary}>Total Expenses:</Text><Text style={[styles.bold, textPrimary]}>₹{totalExpenses.toFixed(2)}</Text></View>
           <View style={styles.row}>
-            <Text>Net Profit:</Text>
-            <Text style={[styles.bold, { color: profit >= 0 ? '#2E7D32' : '#C62828' }]}>₹{profit.toFixed(2)}</Text>
+            <Text style={textSecondary}>Net Profit:</Text>
+            <Text style={[styles.bold, { color: profit >= 0 ? '#4CAF50' : '#ff4444' }]}>₹{profit.toFixed(2)}</Text>
           </View>
-          <TouchableOpacity style={styles.addBtn} onPress={() => setExpenseModalVisible(true)}>
+          <TouchableOpacity style={[styles.addBtn, { backgroundColor: '#FF9800' }]} onPress={() => setExpenseModalVisible(true)}>
             <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ {t('addExpenseLabel')}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* NEW: CLOSE DAY CARD */}
-        <View style={[styles.card, { borderTopWidth: 5, borderTopColor: '#8B0000' }]}>
-          <Text style={styles.cardTitle}>🏁 Day-End Operations</Text>
-          <Text style={styles.infoText}>Finalize today's accounts and sync data to the cloud.</Text>
-          <TouchableOpacity style={styles.closeDayBtn} onPress={handleCloseDay}>
-            <Text style={styles.closeDayBtnText}>CLOSE TODAY'S BUSINESS</Text>
+        {/* CLOSE DAY CARD */}
+        <View style={[cardStyle, { borderTopWidth: 5, borderTopColor: theme.primary }]}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>🏁 {t('dayEndOperations')}</Text>
+          <Text style={[styles.infoText, textSecondary]}>{t('dayEndSubtitle')}</Text>
+          <TouchableOpacity style={[styles.closeDayBtn, { backgroundColor: theme.text, borderColor: theme.border }]} onPress={handleCloseDay}>
+            <Text style={[styles.closeDayBtnText, { color: theme.background }]}>{t('closeBusiness')}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Expense List Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>📑 Expense List</Text>
+        <View style={cardStyle}>
+          <Text style={[styles.cardTitle, { color: theme.primary }]}>📑 {t('expenseList')}</Text>
           {filteredExpenses.length === 0 ? (
-            <Text style={styles.emptyText}>{t('noExpensesRecorded')}</Text>
+            <Text style={[styles.emptyText, textSecondary]}>{t('noExpensesRecorded')}</Text>
           ) : (
             filteredExpenses.map((exp) => (
-              <TouchableOpacity key={exp.id} style={styles.expenseItem} onLongPress={() => handleDeleteExpense(exp.id)}>
+              <TouchableOpacity key={exp.id} style={[styles.expenseItem, { borderBottomColor: theme.border }]} onLongPress={() => handleDeleteExpense(exp.id)}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.bold}>{exp.category}</Text>
-                  {exp.description ? <Text style={styles.small}>{exp.description}</Text> : null}
+                  <Text style={[styles.bold, textPrimary]}>{exp.category}</Text>
+                  {exp.description ? <Text style={[styles.small, textSecondary]}>{exp.description}</Text> : null}
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.bold}>₹{exp.amount.toFixed(2)}</Text>
-                  <Text style={styles.small}>{exp.date}</Text>
+                  <Text style={[styles.bold, textPrimary]}>₹{exp.amount.toFixed(2)}</Text>
+                  <Text style={[styles.small, textSecondary]}>{exp.date}</Text>
                   <Text style={styles.deleteHint}>(Hold to delete)</Text>
                 </View>
               </TouchableOpacity>
@@ -270,13 +295,13 @@ export default function ReportsScreen() {
         </View>
 
         {/* Cloud & Backup Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>☁️ Backup & Sync</Text>
-          <Text style={styles.infoText}>Save your data to Google Drive, WhatsApp, or Email to prevent loss.</Text>
-          <TouchableOpacity style={styles.cloudBtn} onPress={handleCloudBackup}>
-            <Text style={styles.cloudBtnText}>Backup to Cloud / Google Drive</Text>
+        <View style={cardStyle}>
+          <Text style={[styles.cardTitle, { color: theme.primary }]}>☁️ {t('backupSync')}</Text>
+          <Text style={[styles.infoText, textSecondary]}>{t('backupSubtitle')}</Text>
+          <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#4285F4' }]} onPress={handleCloudBackup}>
+            <Text style={styles.cloudBtnText}>{t('backupDrive')}</Text>
           </TouchableOpacity>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <TouchableOpacity style={[styles.backupBtn, {backgroundColor: '#FF7043'}]} onPress={() => {
             Alert.alert(t('restoreConfirmTitle'), t('restoreConfirmMessage'), [
               { text: t('cancel'), style: 'cancel' },
@@ -291,16 +316,20 @@ export default function ReportsScreen() {
       {/* Expense Modal */}
       <Modal visible={expenseModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <ScrollView>
-              <Text style={styles.modalTitle}>{t('addExpenseLabel')}</Text>
-              <TextInput style={styles.modalInput} value={expenseCategory} onChangeText={setExpenseCategory} placeholder="Category" />
-              <TextInput style={styles.modalInput} value={expenseDescription} onChangeText={setExpenseDescription} placeholder="Description" />
-              <TextInput style={[styles.modalInput, !isAmountValid && styles.inputError]} value={expenseAmount} onChangeText={(v) => {setExpenseAmount(v); setIsAmountValid(true);}} placeholder="Amount" keyboardType="numeric" />
-              <div style={styles.modalButtons}>
-                <TouchableOpacity style={styles.modalCancelButton} onPress={() => setExpenseModalVisible(false)}><Text>{t('cancel')}</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.modalSaveButton} onPress={handleSaveExpense}><Text>{t('save')}</Text></TouchableOpacity>
-              </div>
+              <Text style={[styles.modalTitle, { color: theme.primary }]}>{t('addExpenseLabel')}</Text>
+              <TextInput style={inputStyle} value={expenseCategory} onChangeText={setExpenseCategory} placeholder={t('category') || "Category"} placeholderTextColor={theme.textSecondary} />
+              <TextInput style={inputStyle} value={expenseDescription} onChangeText={setExpenseDescription} placeholder="Description" placeholderTextColor={theme.textSecondary} />
+              <TextInput style={[inputStyle, !isAmountValid && styles.inputError]} value={expenseAmount} onChangeText={(v) => {setExpenseAmount(v); setIsAmountValid(true);}} placeholder={t('price') || "Amount"} keyboardType="numeric" placeholderTextColor={theme.textSecondary} />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity style={[styles.modalCancelButton, { borderColor: theme.border }]} onPress={() => setExpenseModalVisible(false)}>
+                    <Text style={{ color: theme.text }}>{t('cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalSaveButton, { backgroundColor: theme.primary }]} onPress={handleSaveExpense}>
+                    <Text style={{ color: '#fff' }}>{t('save')}</Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -310,38 +339,37 @@ export default function ReportsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  headerContainer: { backgroundColor: '#fff', padding: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  searchWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f0f0', borderRadius: 20, paddingHorizontal: 15, height: 45, marginBottom: 10 },
+  container: { flex: 1 },
+  headerContainer: { padding: 10, borderBottomWidth: 1 },
+  searchWrapper: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, paddingHorizontal: 15, height: 45, marginBottom: 10 },
   searchInput: { flex: 1, fontSize: 15 },
-  clearIcon: { fontWeight: 'bold', color: '#999', padding: 5, fontSize: 18 },
+  clearIcon: { fontWeight: 'bold', padding: 5, fontSize: 18 },
   periodScroll: { flexDirection: 'row' },
-  periodBtn: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f0f0f0', marginRight: 10 },
-  periodBtnActive: { backgroundColor: '#8B0000' },
-  periodText: { fontSize: 12, color: '#666', fontWeight: '600' },
-  card: { backgroundColor: '#fff', margin: 10, borderRadius: 15, padding: 15, elevation: 2 },
-  cardTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 15, color: '#333' },
+  periodBtn: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, marginRight: 10 },
+  periodText: { fontSize: 12, fontWeight: '600' },
+  card: { margin: 10, borderRadius: 15, padding: 15, elevation: 2 },
+  cardTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 15 },
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-  divider: { height: 1, backgroundColor: '#eee', marginVertical: 10 },
-  bold: { fontWeight: 'bold', color: '#333' },
-  grandBold: { fontSize: 18, fontWeight: 'bold', color: '#8B0000' },
-  small: { fontSize: 11, color: '#999' },
-  addBtn: { backgroundColor: '#FF9800', padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 15 },
-  expenseItem: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  cloudBtn: { backgroundColor: '#4285F4', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
+  divider: { height: 1, marginVertical: 10 },
+  bold: { fontWeight: 'bold' },
+  grandBold: { fontSize: 18, fontWeight: 'bold' },
+  small: { fontSize: 11 },
+  addBtn: { padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 15 },
+  expenseItem: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1 },
+  cloudBtn: { padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
   cloudBtnText: { color: '#fff', fontWeight: 'bold' },
   backupBtn: { padding: 12, borderRadius: 10, alignItems: 'center' },
-  emptyText: { color: '#999', fontStyle: 'italic', textAlign: 'center', paddingVertical: 10 },
-  deleteHint: { fontSize: 10, color: '#C62828', textAlign: 'right', marginTop: 2 },
-  infoText: { fontSize: 13, color: '#666', marginBottom: 10 },
-  closeDayBtn: { backgroundColor: '#333', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10, borderWidth: 1, borderColor: '#000' },
-  closeDayBtnText: { color: '#fff', fontWeight: '900', letterSpacing: 1 },
+  emptyText: { fontStyle: 'italic', textAlign: 'center', paddingVertical: 10 },
+  deleteHint: { fontSize: 10, color: '#ff4444', textAlign: 'right', marginTop: 2 },
+  infoText: { fontSize: 13, marginBottom: 10 },
+  closeDayBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10, borderWidth: 1 },
+  closeDayBtnText: { fontWeight: '900', letterSpacing: 1 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#fff', borderRadius: 15, padding: 15, width: '90%', maxHeight: '80%' },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#8B0000', textAlign: 'center', marginBottom: 10 },
-  modalInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, fontSize: 14, backgroundColor: '#fafafa', marginBottom: 10 },
-  inputError: { borderColor: '#C62828', backgroundColor: '#FFFEEB' },
+  modalContent: { borderRadius: 15, padding: 15, width: '90%', maxHeight: '80%' },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 10 },
+  modalInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14, marginBottom: 10 },
+  inputError: { borderColor: '#C62828' },
   modalButtons: { flexDirection: 'row', marginTop: 20 },
-  modalCancelButton: { flex: 1, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#ddd', alignItems: 'center', marginRight: 8 },
-  modalSaveButton: { flex: 1, padding: 12, borderRadius: 8, backgroundColor: '#8B0000', alignItems: 'center' },
+  modalCancelButton: { flex: 1, padding: 12, borderRadius: 8, borderWidth: 1, alignItems: 'center', marginRight: 8 },
+  modalSaveButton: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center' },
 });

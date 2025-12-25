@@ -1,13 +1,12 @@
 // src/utils/translations.js
-// All text in English and Malayalam
 
 const translations = {
   en: {
-    // App Header
+    // --- App Header ---
     hotelName: 'HOTEL GRACE',
     location: 'Wayanad, Kerala',
 
-    // Tab Names
+    // --- Tab Names ---
     home: 'Home',
     menu: 'Menu',
     order: 'Order',
@@ -15,7 +14,7 @@ const translations = {
     history: 'History',
     reports: 'Reports',
 
-    // Home Screen
+    // --- Home Screen ---
     welcomeTo: 'Welcome to',
     todaysSummary: "Today's Summary",
     orders: 'Orders',
@@ -28,7 +27,7 @@ const translations = {
     noOrdersYet: 'No orders yet. Start taking orders!',
     madeWithLove: 'Made with ❤️ for HOTEL GRACE',
 
-    // Menu Screen
+    // --- Menu Screen ---
     manageMenu: 'Manage Menu',
     showing: 'Showing',
     items: 'items',
@@ -52,7 +51,7 @@ const translations = {
     enterValidPrice: 'Please enter valid price',
     noItemsCategory: 'No items in this category',
 
-    // Categories
+    // --- Categories ---
     all: 'All',
     breakfast: 'Breakfast',
     rice: 'Rice',
@@ -60,7 +59,7 @@ const translations = {
     snacks: 'Snacks',
     beverages: 'Beverages',
 
-    // Order Screen
+    // --- Order Screen ---
     add: 'ADD',
     clearOrder: 'Clear Order',
     clearConfirm: 'Are you sure you want to clear all items?',
@@ -70,7 +69,7 @@ const translations = {
     noItemsAvailable: 'No items available',
     viewBillArrow: 'View Bill →',
 
-    // Bill Screen
+    // --- Bill Screen ---
     generateBill: 'Generate Bill',
     customerDetails: 'Customer Details',
     customerName: 'Customer Name (Optional)',
@@ -89,11 +88,14 @@ const translations = {
     saveAndClear: 'Save and clear this order?',
     orderCompleted: 'Order completed!',
     thankYou: 'Thank You! Visit Again',
+    billNo: 'Bill No',
+    date: 'Date',
+    time: 'Time',
+    saveOrderHistory: 'Save Order History',
+    closeBusiness: "CLOSE TODAY'S BUSINESS",
 
-    // History Screen
+    // --- History Screen ---
     orderHistory: 'Order History',
-    today: 'Today',
-    thisWeek: 'This Week',
     noOrdersFound: 'No orders found',
     clearHistory: '🗑️ Clear History',
     clearAllHistory: 'Clear All History',
@@ -103,47 +105,58 @@ const translations = {
     table: 'Table',
     customer: 'Customer',
     qty: 'qty',
-
-    // Bill text
-    billNo: 'Bill No',
-    date: 'Date',
-    time: 'Time',
-
-    // Language
-    language: 'Language',
-    english: 'English',
-    malayalam: 'മലയാളം',
-
-    // Reports screen
+    items: 'items',
+    deleteBill: 'Delete Bill',
+    
+    // --- Reports Screen (New & Merged Keys) ---
+    salesReport: 'Sales Report',
     salesSummary: 'Sales Summary',
+    profitAnalysis: 'Profit Analysis',
+    dayEndOperations: 'Day-End Operations',
+    dayEndSubtitle: "Finalize today's accounts and sync data.",
+    expenseList: 'Expense List',
+    backupSync: 'Backup & Sync',
+    backupSubtitle: 'Save data to Cloud/Drive to prevent loss.',
+    backupDrive: 'Backup to Cloud / Google Drive',
+    restoreDataLabel: 'Restore Data',
+    restoreConfirmTitle: 'Restore Data?',
+    restoreConfirmMessage: 'This will overwrite current data. Continue?',
+    addExpenseLabel: 'Add Expense',
+    noExpensesRecorded: 'No expenses recorded',
+    
+    todaySales: "Today's Sales",
+    weeklySales: 'Weekly Sales',
+    monthlySales: 'Monthly Sales',
+    totalOrders: 'Total Orders',
+    
     expensesProfit: 'Expenses & Profit',
     totalExpensesLabel: 'Total Expenses',
     profitLabel: 'Profit (Sales - Expenses)',
     expensesLabel: 'Expenses',
-    noExpensesRecorded: 'No expenses recorded.',
-    backupRestore: 'Backup & Restore',
-    backupInfo1: 'Backup will save menu, orders, expenses, and settings to a JSON file.',
-    backupInfo2: 'Restore will overwrite current data from a backup file you choose.',
-    backupDataLabel: 'Backup Data',
-    restoreDataLabel: 'Restore Data',
-    thisMonth: 'This Month',
-    allTime: 'All Time',
-    addExpenseLabel: 'Add Expense',
     expenseCategoryLabel: 'Category',
     expenseDescriptionLabel: 'Description (Optional)',
     expenseAmountLabel: 'Amount (₹)',
     invalidAmountTitle: 'Invalid',
     invalidAmountMessage: 'Please enter a valid amount',
-    restoreConfirmTitle: 'Restore Data',
-    restoreConfirmMessage: 'Restoring will overwrite current menu, orders, expenses and settings with the backup file. Continue?',
+
+    // Period Filters
+    allTime: 'All Time',
+    thisWeek: 'This Week',
+    thisMonth: 'This Month',
+    today: 'Today',
+
+    // --- Language ---
+    language: 'Language',
+    english: 'English',
+    malayalam: 'മലയാളം',
   },
 
   ml: {
-    // App Header
+    // --- App Header ---
     hotelName: 'ഹോട്ടൽ ഗ്രേസ്',
     location: 'വയനാട്, കേരളം',
 
-    // Tab Names
+    // --- Tab Names ---
     home: 'ഹോം',
     menu: 'മെനു',
     order: 'ഓർഡർ',
@@ -151,12 +164,12 @@ const translations = {
     history: 'ചരിത്രം',
     reports: 'റിപ്പോർട്ടുകൾ',
 
-    // Home Screen
+    // --- Home Screen ---
     welcomeTo: 'സ്വാഗതം',
     todaysSummary: 'ഇന്നത്തെ സംഗ്രഹം',
     orders: 'ഓർഡറുകൾ',
     totalSales: 'ആകെ വിൽപ്പന',
-    quickActions: 'ദ്രുത പ്രവർത്തനങ്ങൾ',
+    quickActions: 'സേവനങ്ങൾ',
     newOrder: 'പുതിയ ഓർഡർ',
     editMenu: 'മെനു എഡിറ്റ്',
     viewBill: 'ബിൽ കാണുക',
@@ -164,7 +177,7 @@ const translations = {
     noOrdersYet: 'ഇതുവരെ ഓർഡറുകൾ ഇല്ല. ഓർഡറുകൾ എടുക്കാൻ തുടങ്ങൂ!',
     madeWithLove: 'ഹോട്ടൽ ഗ്രേസിനായി ❤️ നിർമ്മിച്ചത്',
 
-    // Menu Screen
+    // --- Menu Screen ---
     manageMenu: 'മെനു നിയന്ത്രിക്കുക',
     showing: 'കാണിക്കുന്നത്',
     items: 'ഇനങ്ങൾ',
@@ -176,10 +189,10 @@ const translations = {
     enterPrice: 'വില നൽകുക',
     category: 'വിഭാഗം',
     cancel: 'റദ്ദാക്കുക',
-    save: 'സേവ് ചെയ്യുക',
-    delete: 'ഇല്ലാതാക്കുക',
-    deleteItem: 'ഇനം ഇല്ലാതാക്കുക',
-    deleteConfirm: 'ഇത് ഇല്ലാതാക്കണോ',
+    save: 'സൂക്ഷിക്കുക',
+    delete: 'നീക്കം',
+    deleteItem: 'നീക്കം ചെയ്യുക',
+    deleteConfirm: 'ഈ സാധനം നീക്കം ചെയ്യണോ?',
     itemAdded: 'ഇനം ചേർത്തു!',
     itemUpdated: 'ഇനം അപ്ഡേറ്റ് ചെയ്തു!',
     success: 'വിജയം',
@@ -188,7 +201,7 @@ const translations = {
     enterValidPrice: 'ദയവായി സാധുവായ വില നൽകുക',
     noItemsCategory: 'ഈ വിഭാഗത്തിൽ ഇനങ്ങൾ ഇല്ല',
 
-    // Categories
+    // --- Categories ---
     all: 'എല്ലാം',
     breakfast: 'പ്രഭാതഭക്ഷണം',
     rice: 'ചോറ്',
@@ -196,7 +209,7 @@ const translations = {
     snacks: 'ലഘുഭക്ഷണം',
     beverages: 'പാനീയങ്ങൾ',
 
-    // Order Screen
+    // --- Order Screen ---
     add: 'ചേർക്കുക',
     clearOrder: 'ഓർഡർ മായ്ക്കുക',
     clearConfirm: 'എല്ലാ ഇനങ്ങളും മായ്ക്കണോ?',
@@ -206,7 +219,7 @@ const translations = {
     noItemsAvailable: 'ഇനങ്ങൾ ലഭ്യമല്ല',
     viewBillArrow: 'ബിൽ കാണുക →',
 
-    // Bill Screen
+    // --- Bill Screen ---
     generateBill: 'ബിൽ ഉണ്ടാക്കുക',
     customerDetails: 'ഉപഭോക്തൃ വിവരങ്ങൾ',
     customerName: 'ഉപഭോക്താവിന്റെ പേര് (ഓപ്ഷണൽ)',
@@ -225,11 +238,13 @@ const translations = {
     saveAndClear: 'ഈ ഓർഡർ സേവ് ചെയ്ത് മായ്ക്കണോ?',
     orderCompleted: 'ഓർഡർ പൂർത്തിയായി!',
     thankYou: 'നന്ദി! വീണ്ടും വരിക',
-
-    // History Screen
+    billNo: 'ബിൽ നമ്പർ',
+    date: 'തീയതി',
+    time: 'സമയം',
+    saveOrderHistory: 'ചരിത്രത്തിൽ സേവ് ചെയ്യുക',
+    
+    // --- History Screen ---
     orderHistory: 'ഓർഡർ ചരിത്രം',
-    today: 'ഇന്ന്',
-    thisWeek: 'ഈ ആഴ്ച',
     noOrdersFound: 'ഓർഡറുകൾ കണ്ടെത്തിയില്ല',
     clearHistory: '🗑️ ചരിത്രം മായ്ക്കുക',
     clearAllHistory: 'എല്ലാ ചരിത്രവും മായ്ക്കുക',
@@ -239,39 +254,50 @@ const translations = {
     table: 'ടേബിൾ',
     customer: 'ഉപഭോക്താവ്',
     qty: 'എണ്ണം',
+    deleteBill: 'ബിൽ നീക്കം ചെയ്യുക',
 
-    // Bill text
-    billNo: 'ബിൽ നമ്പർ',
-    date: 'തീയതി',
-    time: 'സമയം',
+    // --- Reports Screen (New & Merged Keys) ---
+    salesReport: 'വിൽപന റിപ്പോർട്ട്',
+    salesSummary: 'വിൽപന ചുരുക്കം',
+    profitAnalysis: 'ലാഭ കണക്ക്', 
+    dayEndOperations: 'ദിവസാവസാന കണക്കുകൾ', 
+    dayEndSubtitle: 'ഇന്നത്തെ കണക്കുകൾ ക്ലോസ് ചെയ്യുക.', 
+    closeBusiness: 'ഇന്നത്തെ ബിസിനസ് അവസാനിപ്പിക്കുക',
+    expenseList: 'ചെലവ് പട്ടിക', 
+    backupSync: 'ബാക്കപ്പ് & സിങ്ക്',
+    backupSubtitle: 'വിവരങ്ങൾ നഷ്ടപ്പെടാതിരിക്കാൻ ക്ലൗഡിൽ സൂക്ഷിക്കുക.', 
+    backupDrive: 'ക്ലൗഡിലേക്ക് ബാക്കപ്പ് ചെയ്യുക', 
+    restoreDataLabel: 'വിവരങ്ങൾ വീണ്ടെടുക്കുക', 
+    restoreConfirmTitle: 'വിവരങ്ങൾ മാറ്റണോ?', 
+    restoreConfirmMessage: 'നിലവിലുള്ള വിവരങ്ങൾ മായ്ച്ചുപോകും. തുടരണോ?', 
+    addExpenseLabel: 'ചെലവ് ചേർക്കുക', 
+    noExpensesRecorded: 'ചെലവുകൾ രേഖപ്പെടുത്തിയിട്ടില്ല', 
 
-    // Language
-    language: 'ഭാഷ',
-    english: 'English',
-    malayalam: 'മലയാളം',
-
-    // Reports screen
-    salesSummary: 'വിൽപ്പന സംഗ്രഹം',
+    todaySales: 'ഇന്നത്തെ വിൽപന',
+    weeklySales: 'ഈ ആഴ്ചയിലെ വിൽപന',
+    monthlySales: 'ഈ മാസത്തെ വിൽപന',
+    totalOrders: 'ആകെ ഓർഡറുകൾ',
+    
     expensesProfit: 'ചിലവും ലാഭവും',
     totalExpensesLabel: 'ആകെ ചിലവ്',
     profitLabel: 'ലാഭം (വിൽപ്പന - ചിലവ്)',
     expensesLabel: 'ചിലവുകൾ',
-    noExpensesRecorded: 'ചിലവ് രേഖകളില്ല.',
-    backupRestore: 'ബാക്കപ്പ് & റിസ്റ്റോർ',
-    backupInfo1: 'മെനു, ഓർഡറുകൾ, ചിലവുകൾ, ക്രമീകരണങ്ങൾ എന്നിവ ഒരു ബാക്കപ്പ് ഫയലിൽ സേവ് ചെയ്യും.',
-    backupInfo2: 'റിസ്റ്റോർ ചെയ്താൽ നിലവിലുള്ള എല്ലാ ഡാറ്റയും ബാക്കപ്പ് ഫയലിലെ ഡാറ്റയാൽ പകരപ്പെടും.',
-    backupDataLabel: 'ഡാറ്റ ബാക്കപ്പ്',
-    restoreDataLabel: 'ഡാറ്റ റിസ്റ്റോർ',
-    thisMonth: 'ഈ മാസം',
-    allTime: 'എല്ലാ സമയം',
-    addExpenseLabel: 'ചിലവ് ചേർക്കുക',
     expenseCategoryLabel: 'വിഭാഗം',
     expenseDescriptionLabel: 'വിവരണം (ഓപ്ഷണൽ)',
     expenseAmountLabel: 'തുക (₹)',
     invalidAmountTitle: 'തെറ്റ്',
     invalidAmountMessage: 'സാധുവായ തുക നൽകുക',
-    restoreConfirmTitle: 'ഡാറ്റ റിസ്റ്റോർ',
-    restoreConfirmMessage: 'ബാക്കപ്പ് ഫയലിലെ ഡാറ്റ ഉപയോഗിച്ച് നിലവിലുള്ള എല്ലാ ഡാറ്റയും പകരപ്പെടും. തുടരണമോ?',
+
+    // Period Filters
+    allTime: 'എല്ലാം',
+    thisWeek: 'ഈ ആഴ്ച',
+    thisMonth: 'ഈ മാസം',
+    today: 'ഇന്ന്',
+
+    // --- Language ---
+    language: 'ഭാഷ',
+    english: 'English',
+    malayalam: 'മലയാളം',
   },
 };
 

@@ -7,7 +7,6 @@ import {
   FlatList,
   TouchableOpacity,
   ScrollView,
-  Alert,
   Image,
   Modal,
   Platform,
@@ -15,25 +14,29 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons'; // Added for icons
 import { useLanguage } from '../context/LanguageContext';
+import { useTheme } from '../context/ThemeContext'; // Theme Hook
 import useOrientation from '../utils/useOrientation';
 import { loadMenu, loadCurrentOrder, saveCurrentOrder } from '../utils/storage';
 
 export default function OrderScreen({ navigation }) {
   const { t, getCategoryName } = useLanguage();
+  const { theme, isDark } = useTheme(); // Use Theme
   const insets = useSafeAreaInsets();
   const { isLandscape, numColumns, cardWidth } = useOrientation();
   
   const [menuItems, setMenuItems] = useState([]);
   const [orderItems, setOrderItems] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchText, setSearchText] = useState(''); // Search state preserved
+  const [searchText, setSearchText] = useState('');
   const [variantModalVisible, setVariantModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
   const categories = ['All', 'Breakfast', 'Rice', 'Curry', 'Snacks', 'Beverages'];
 
   const safeBottom = Platform.OS === 'ios' ? insets.bottom : 10;
+  // Adjust padding to make room for the bottom cart bar
   const orderBarHeight = isLandscape ? 120 : 180;
   const bottomPadding = orderItems.length > 0 ? orderBarHeight + safeBottom + 20 : 20;
 
@@ -50,7 +53,7 @@ export default function OrderScreen({ navigation }) {
     setOrderItems(currentOrder);
   };
 
-  // Improved Filtering Logic: Handles both Categories AND Search
+  // Filter Logic
   const filteredMenu = useMemo(() => {
     return menuItems.filter(item => {
       const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
@@ -115,9 +118,10 @@ export default function OrderScreen({ navigation }) {
   const renderMenuItem = ({ item }) => {
     const quantity = getQuantity(item);
     const dynamicImageHeight = isLandscape ? cardWidth * 0.5 : cardWidth * 0.65;
+    
     return (
       <TouchableOpacity 
-        style={[styles.menuCard, { width: cardWidth, margin: 5 }]}
+        style={[styles.menuCard, { width: cardWidth, margin: 5, backgroundColor: theme.card }]}
         onPress={() => handleItemClick(item)}
         activeOpacity={0.7}
       >
@@ -125,53 +129,63 @@ export default function OrderScreen({ navigation }) {
           {item.image ? (
             <Image source={{ uri: item.image }} style={[styles.cardImage, { height: dynamicImageHeight }]} />
           ) : (
-            <View style={[styles.cardPlaceholder, { height: dynamicImageHeight }]}>
+            <View style={[styles.cardPlaceholder, { height: dynamicImageHeight, backgroundColor: theme.inputBackground }]}>
               <Text style={{ fontSize: isLandscape ? 28 : 36 }}>🍽️</Text>
             </View>
           )}
           {quantity > 0 && (
-            <View style={styles.quantityBadge}>
+            <View style={[styles.quantityBadge, { backgroundColor: theme.primary }]}>
               <Text style={styles.quantityBadgeText}>{quantity}</Text>
             </View>
           )}
         </View>
         <View style={styles.cardInfo}>
-          <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
-          <Text style={styles.cardPrice}>₹{item.price.toFixed(0)}</Text>
+          <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
+          <Text style={[styles.cardPrice, { color: theme.primary }]}>₹{item.price.toFixed(0)}</Text>
         </View>
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Search Bar Section */}
-      <View style={styles.searchBarContainer}>
-        <View style={styles.searchWrapper}>
-          <Text style={{ marginRight: 8 }}>🔍</Text>
+      <View style={[styles.searchBarContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+        <View style={[styles.searchWrapper, { backgroundColor: theme.inputBackground }]}>
+          <Ionicons name="search" size={20} color={theme.textSecondary} style={{ marginRight: 8 }} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: theme.text }]}
             placeholder={t('enterItemName')}
+            placeholderTextColor={theme.textSecondary}
             value={searchText}
             onChangeText={setSearchText}
           />
           {searchText !== '' && (
             <TouchableOpacity onPress={() => setSearchText('')}>
-              <Text style={styles.clearIcon}>✕</Text>
+              <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
+      {/* Category List */}
       <View style={{ height: 60 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryContent}>
           {categories.map(category => (
             <TouchableOpacity
               key={category}
-              style={[styles.categoryButton, selectedCategory === category && styles.categoryButtonActive]}
+              style={[
+                styles.categoryButton, 
+                selectedCategory === category 
+                  ? { backgroundColor: theme.primary } 
+                  : { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }
+              ]}
               onPress={() => setSelectedCategory(category)}
             >
-              <Text style={[styles.categoryText, selectedCategory === category && styles.categoryTextActive]}>
+              <Text style={[
+                styles.categoryText, 
+                { color: selectedCategory === category ? '#fff' : theme.text }
+              ]}>
                 {getCategoryName(category)}
               </Text>
             </TouchableOpacity>
@@ -179,6 +193,7 @@ export default function OrderScreen({ navigation }) {
         </ScrollView>
       </View>
 
+      {/* Grid List */}
       <FlatList
         data={filteredMenu}
         renderItem={renderMenuItem}
@@ -186,47 +201,64 @@ export default function OrderScreen({ navigation }) {
         numColumns={numColumns}
         key={numColumns} 
         contentContainerStyle={{ paddingBottom: bottomPadding }}
-        ListEmptyComponent={<Text style={styles.emptyText}>{searchText ? "No matches found" : t('noItemsAvailable')}</Text>}
+        ListEmptyComponent={
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+            {searchText ? "No matches found" : t('noItemsAvailable')}
+          </Text>
+        }
       />
 
-      {/* Cart Summary Bar with original Controls */}
+      {/* Cart Summary Bar */}
       {orderItems.length > 0 && (
-        <View style={[styles.orderBar, { paddingBottom: safeBottom + 10 }]}>
+        <View style={[styles.orderBar, { 
+            paddingBottom: safeBottom + 10, 
+            backgroundColor: theme.card, 
+            borderColor: theme.border 
+        }]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
             {orderItems.map(item => (
-              <View key={item.orderId} style={styles.cartItem}>
-                <Text style={styles.cartItemName}>{item.name} x{item.quantity}</Text>
+              <View key={item.orderId} style={[styles.cartItem, { backgroundColor: theme.inputBackground }]}>
+                <Text style={[styles.cartItemName, { color: theme.text }]}>{item.name} x{item.quantity}</Text>
                 <View style={{ flexDirection: 'row' }}>
-                  <TouchableOpacity onPress={() => removeFromOrder(item.orderId)} style={styles.smallBtn}><Text>−</Text></TouchableOpacity>
-                  <TouchableOpacity onPress={() => addToOrder({ id: item.id, image: item.image }, item.name, item.price)} style={styles.smallBtn}><Text>+</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => removeFromOrder(item.orderId)} style={[styles.smallBtn, { backgroundColor: theme.card }]}>
+                    <Text style={{ color: theme.text }}>−</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => addToOrder({ id: item.id, image: item.image }, item.name, item.price)} style={[styles.smallBtn, { backgroundColor: theme.card }]}>
+                    <Text style={{ color: theme.text }}>+</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             ))}
           </ScrollView>
-          <TouchableOpacity style={styles.billButton} onPress={() => navigation.navigate('Bill')}>
+          <TouchableOpacity 
+            style={[styles.billButton, { backgroundColor: theme.primary }]} 
+            onPress={() => navigation.navigate('Bill')}
+          >
             <Text style={styles.billButtonText}>{t('viewBillArrow')} (₹{orderItems.reduce((s, i) => s + (i.price * i.quantity), 0).toFixed(2)})</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Re-added Variant Modal */}
+      {/* Variant Modal */}
       <Modal visible={variantModalVisible} animationType="slide" transparent={true}>
           <View style={styles.variantModalOverlay}>
-              <View style={styles.variantModalContent}>
+              <View style={[styles.variantModalContent, { backgroundColor: theme.card }]}>
                   {selectedItem && (
                       <>
-                        <Text style={styles.modalTitle}>{selectedItem.name}</Text>
-                        <TouchableOpacity style={styles.variantOption} onPress={() => addToOrder(selectedItem, selectedItem.name, selectedItem.price)}>
-                            <Text>{selectedItem.name} (Regular)</Text>
-                            <Text>₹{selectedItem.price}</Text>
+                        <Text style={[styles.modalTitle, { color: theme.text }]}>{selectedItem.name}</Text>
+                        <TouchableOpacity style={[styles.variantOption, { borderBottomColor: theme.border }]} onPress={() => addToOrder(selectedItem, selectedItem.name, selectedItem.price)}>
+                            <Text style={{ color: theme.text }}>{selectedItem.name} (Regular)</Text>
+                            <Text style={{ color: theme.primary, fontWeight: 'bold' }}>₹{selectedItem.price}</Text>
                         </TouchableOpacity>
                         {selectedItem.variants.map(v => (
-                            <TouchableOpacity key={v.id} style={styles.variantOption} onPress={() => addToOrder(selectedItem, v.name, v.price)}>
-                                <Text>{v.name}</Text>
-                                <Text>₹{v.price}</Text>
+                            <TouchableOpacity key={v.id} style={[styles.variantOption, { borderBottomColor: theme.border }]} onPress={() => addToOrder(selectedItem, v.name, v.price)}>
+                                <Text style={{ color: theme.text }}>{v.name}</Text>
+                                <Text style={{ color: theme.primary, fontWeight: 'bold' }}>₹{v.price}</Text>
                             </TouchableOpacity>
                         ))}
-                        <TouchableOpacity onPress={() => setVariantModalVisible(false)} style={styles.closeBtn}><Text>Cancel</Text></TouchableOpacity>
+                        <TouchableOpacity onPress={() => setVariantModalVisible(false)} style={styles.closeBtn}>
+                            <Text style={{ color: theme.textSecondary }}>Cancel</Text>
+                        </TouchableOpacity>
                       </>
                   )}
               </View>
@@ -237,35 +269,32 @@ export default function OrderScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  searchBarContainer: { padding: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  searchWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f0f0', borderRadius: 20, paddingHorizontal: 15, height: 40 },
+  container: { flex: 1 },
+  searchBarContainer: { padding: 10, borderBottomWidth: 1 },
+  searchWrapper: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, paddingHorizontal: 15, height: 40 },
   searchInput: { flex: 1, fontSize: 14 },
-  clearIcon: { fontWeight: 'bold', color: '#999', padding: 5 },
   categoryContent: { paddingHorizontal: 10, alignItems: 'center' },
-  categoryButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f0f0f0', marginRight: 8 },
-  categoryButtonActive: { backgroundColor: '#8B0000' },
-  categoryText: { color: '#666', fontWeight: '600' },
-  categoryTextActive: { color: '#fff' },
-  menuCard: { backgroundColor: '#fff', borderRadius: 12, elevation: 3, overflow: 'hidden' },
+  categoryButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginRight: 8 },
+  categoryText: { fontWeight: '600' },
+  menuCard: { borderRadius: 12, elevation: 3, overflow: 'hidden' },
   cardImageContainer: { position: 'relative' },
   cardImage: { width: '100%', resizeMode: 'cover' },
-  cardPlaceholder: { width: '100%', backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center' },
-  quantityBadge: { position: 'absolute', top: 5, right: 5, backgroundColor: '#8B0000', borderRadius: 12, width: 24, height: 24, justifyContent: 'center', alignItems: 'center' },
+  cardPlaceholder: { width: '100%', justifyContent: 'center', alignItems: 'center' },
+  quantityBadge: { position: 'absolute', top: 5, right: 5, borderRadius: 12, width: 24, height: 24, justifyContent: 'center', alignItems: 'center' },
   quantityBadgeText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
   cardInfo: { padding: 8 },
   cardName: { fontSize: 13, fontWeight: 'bold' },
-  cardPrice: { color: '#8B0000', marginTop: 2 },
-  orderBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#eee', padding: 10 },
-  cartItem: { backgroundColor: '#f9f9f9', padding: 8, borderRadius: 8, marginRight: 10, flexDirection: 'row', alignItems: 'center' },
+  cardPrice: { marginTop: 2, fontWeight: 'bold' },
+  orderBar: { position: 'absolute', bottom: 0, left: 0, right: 0, borderTopWidth: 1, padding: 10 },
+  cartItem: { padding: 8, borderRadius: 8, marginRight: 10, flexDirection: 'row', alignItems: 'center' },
   cartItemName: { marginRight: 8, fontSize: 12 },
-  smallBtn: { padding: 5, backgroundColor: '#eee', borderRadius: 5, marginLeft: 5 },
-  billButton: { backgroundColor: '#8B0000', padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 10 },
+  smallBtn: { padding: 5, borderRadius: 5, marginLeft: 5 },
+  billButton: { padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 10 },
   billButtonText: { color: '#fff', fontWeight: 'bold' },
-  emptyText: { textAlign: 'center', marginTop: 50, color: '#999' },
+  emptyText: { textAlign: 'center', marginTop: 50 },
   variantModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  variantModalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 20, width: '85%' },
+  variantModalContent: { borderRadius: 20, padding: 20, width: '85%' },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
-  variantOption: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  variantOption: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1 },
   closeBtn: { marginTop: 15, alignItems: 'center', padding: 10 },
 });
