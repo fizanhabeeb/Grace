@@ -1,5 +1,5 @@
 // src/screens/OrderScreen.js
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,29 +14,32 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons'; // Added for icons
+import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../context/LanguageContext';
-import { useTheme } from '../context/ThemeContext'; // Theme Hook
+import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
 import { loadMenu, loadCurrentOrder, saveCurrentOrder } from '../utils/storage';
 
 export default function OrderScreen({ navigation }) {
   const { t, getCategoryName } = useLanguage();
-  const { theme, isDark } = useTheme(); // Use Theme
+  const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { isLandscape, numColumns, cardWidth } = useOrientation();
   
   const [menuItems, setMenuItems] = useState([]);
   const [orderItems, setOrderItems] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchText, setSearchText] = useState('');
+  
+  // --- DEBOUNCE STATE ---
+  const [searchText, setSearchText] = useState(''); // Immediate input
+  const [debouncedSearchText, setDebouncedSearchText] = useState(''); // Delayed filter
+
   const [variantModalVisible, setVariantModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
   const categories = ['All', 'Breakfast', 'Rice', 'Curry', 'Snacks', 'Beverages'];
 
   const safeBottom = Platform.OS === 'ios' ? insets.bottom : 10;
-  // Adjust padding to make room for the bottom cart bar
   const orderBarHeight = isLandscape ? 120 : 180;
   const bottomPadding = orderItems.length > 0 ? orderBarHeight + safeBottom + 20 : 20;
 
@@ -53,14 +56,26 @@ export default function OrderScreen({ navigation }) {
     setOrderItems(currentOrder);
   };
 
-  // Filter Logic
+  // --- DEBOUNCE EFFECT (Performance Fix) ---
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchText(searchText);
+    }, 300); // Wait 300ms after typing stops
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchText]);
+
+  // --- FILTER LOGIC (Uses debounced text) ---
   const filteredMenu = useMemo(() => {
     return menuItems.filter(item => {
       const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-      const matchesSearch = item.name.toLowerCase().includes(searchText.toLowerCase());
+      // Filter using the DEBOUNCED text, not the immediate text
+      const matchesSearch = item.name.toLowerCase().includes(debouncedSearchText.toLowerCase());
       return matchesCategory && matchesSearch;
     });
-  }, [menuItems, selectedCategory, searchText]);
+  }, [menuItems, selectedCategory, debouncedSearchText]);
 
   const handleItemClick = (menuItem) => {
     if (menuItem.hasVariants && menuItem.variants.length > 0) {
@@ -147,6 +162,9 @@ export default function OrderScreen({ navigation }) {
     );
   };
 
+  // Helper styles for Dark Mode
+  const inputStyle = [styles.searchInput, { color: theme.text }];
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Search Bar Section */}
@@ -154,11 +172,11 @@ export default function OrderScreen({ navigation }) {
         <View style={[styles.searchWrapper, { backgroundColor: theme.inputBackground }]}>
           <Ionicons name="search" size={20} color={theme.textSecondary} style={{ marginRight: 8 }} />
           <TextInput
-            style={[styles.searchInput, { color: theme.text }]}
+            style={inputStyle}
             placeholder={t('enterItemName')}
             placeholderTextColor={theme.textSecondary}
             value={searchText}
-            onChangeText={setSearchText}
+            onChangeText={setSearchText} // Updates immediate state, debounce handles the rest
           />
           {searchText !== '' && (
             <TouchableOpacity onPress={() => setSearchText('')}>
@@ -201,14 +219,15 @@ export default function OrderScreen({ navigation }) {
         numColumns={numColumns}
         key={numColumns} 
         contentContainerStyle={{ paddingBottom: bottomPadding }}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-            {searchText ? "No matches found" : t('noItemsAvailable')}
+            {debouncedSearchText ? "No matches found" : t('noItemsAvailable')}
           </Text>
         }
       />
 
-      {/* Cart Summary Bar */}
+      {/* Cart Summary Bar (Horizontal Scroll) */}
       {orderItems.length > 0 && (
         <View style={[styles.orderBar, { 
             paddingBottom: safeBottom + 10, 

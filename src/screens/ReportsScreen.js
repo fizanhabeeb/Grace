@@ -24,13 +24,15 @@ import {
   updateLastBackupTimestamp 
 } from '../utils/storage';
 import { restoreAllData } from '../utils/backup';
-import { exportSalesToLocalCsv } from '../utils/exportToCsv'; // <--- IMPORTED THIS
+import { exportSalesToLocalCsv } from '../utils/exportToCsv';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy'; 
+// --- IMPORT NEW HELPERS ---
+import { safeDate, isToday, formatDateForDisplay } from '../utils/dateHelpers';
 
 export default function ReportsScreen() {
   const { t } = useLanguage();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [period, setPeriod] = useState('today');
@@ -42,6 +44,9 @@ export default function ReportsScreen() {
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [isAmountValid, setIsAmountValid] = useState(true);
+
+  // Safe Math Helper
+  const round = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
 
   useFocusEffect(
     useCallback(() => {
@@ -55,40 +60,34 @@ export default function ReportsScreen() {
     setExpenses(exp || []);
   };
 
+  // --- UPDATED FILTER LOGIC USING SAFE DATE ---
   const filterByPeriod = (dateStr) => {
     if (!dateStr) return false;
-    const today = new Date().toLocaleDateString('en-IN');
     
-    if (period === 'today') return dateStr.includes(today) || dateStr === today;
-    
-    let d;
-    if (dateStr.includes('/')) {
-        const parts = dateStr.split('/');
-        if (parts.length === 3) d = new Date(parts[2], parts[1] - 1, parts[0]);
-    } else {
-        d = new Date(dateStr);
-    }
-    
-    if (!d || isNaN(d.getTime())) return false; 
-
+    // Use safeDate to convert mixed formats (text or ISO) to a Date Object
+    const dateObj = safeDate(dateStr);
     const now = new Date();
 
+    if (period === 'today') {
+        return isToday(dateObj);
+    }
     if (period === 'week') {
-      const weekAgo = new Date();
-      weekAgo.setDate(now.getDate() - 7);
-      return d >= weekAgo;
+        const weekAgo = new Date();
+        weekAgo.setDate(now.getDate() - 7);
+        return dateObj >= weekAgo;
     }
     if (period === 'month') {
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        return dateObj.getMonth() === now.getMonth() && dateObj.getFullYear() === now.getFullYear();
     }
+    // 'all'
     return true;
   };
 
   const filteredOrders = orders.filter((o) => filterByPeriod(o.date));
   
-  const cashSales = filteredOrders.filter(o => o.paymentMode === 'Cash' || !o.paymentMode).reduce((s, o) => s + (o.grandTotal || 0), 0);
-  const upiSales = filteredOrders.filter(o => o.paymentMode === 'UPI').reduce((s, o) => s + (o.grandTotal || 0), 0);
-  const cardSales = filteredOrders.filter(o => o.paymentMode === 'Card').reduce((s, o) => s + (o.grandTotal || 0), 0);
+  const cashSales = round(filteredOrders.filter(o => o.paymentMode === 'Cash' || !o.paymentMode).reduce((s, o) => s + (o.grandTotal || 0), 0));
+  const upiSales = round(filteredOrders.filter(o => o.paymentMode === 'UPI').reduce((s, o) => s + (o.grandTotal || 0), 0));
+  const cardSales = round(filteredOrders.filter(o => o.paymentMode === 'Card').reduce((s, o) => s + (o.grandTotal || 0), 0));
 
   const filteredExpenses = useMemo(() => {
     return expenses.filter((e) => {
@@ -99,9 +98,9 @@ export default function ReportsScreen() {
     });
   }, [expenses, period, searchText]);
 
-  const totalSales = filteredOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
-  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  const profit = totalSales - totalExpenses;
+  const totalSales = round(filteredOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0));
+  const totalExpenses = round(filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0));
+  const profit = round(totalSales - totalExpenses);
 
   // Cloud Backup logic
   const handleCloudBackup = async () => {
@@ -115,9 +114,7 @@ export default function ReportsScreen() {
       const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
       const jsonString = JSON.stringify(backupData);
       
-      await FileSystem.writeAsStringAsync(fileUri, jsonString, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      await FileSystem.writeAsStringAsync(fileUri, jsonString, { encoding: FileSystem.EncodingType.UTF8 });
 
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
@@ -135,20 +132,18 @@ export default function ReportsScreen() {
     }
   };
 
-  // --- UPDATED: AUTO EXPORT CSV ON CLOSE DAY ---
   const handleCloseDay = async () => {
-    const today = new Date().toLocaleDateString('en-IN');
-    // Filter orders for today
-    const todayOrders = orders.filter(o => o.date && (o.date.includes(today) || o.date === today));
+    // Filter today's orders using safe helper
+    const todayOrders = orders.filter(o => isToday(o.date));
     
     if (todayOrders.length === 0) {
       Alert.alert("No Sales", "No orders recorded for today yet.");
       return;
     }
 
-    const total = todayOrders.reduce((s, o) => s + (o.grandTotal || 0), 0);
-    const cash = todayOrders.filter(o => o.paymentMode === 'Cash' || !o.paymentMode).reduce((s, o) => s + (o.grandTotal || 0), 0);
-    const upi = todayOrders.filter(o => o.paymentMode === 'UPI').reduce((s, o) => s + (o.grandTotal || 0), 0);
+    const total = round(todayOrders.reduce((s, o) => s + (o.grandTotal || 0), 0));
+    const cash = round(todayOrders.filter(o => o.paymentMode === 'Cash' || !o.paymentMode).reduce((s, o) => s + (o.grandTotal || 0), 0));
+    const upi = round(todayOrders.filter(o => o.paymentMode === 'UPI').reduce((s, o) => s + (o.grandTotal || 0), 0));
 
     Alert.alert(
       "🏁 Close Day & Export",
@@ -158,20 +153,13 @@ export default function ReportsScreen() {
         { 
           text: "Export & Close", 
           onPress: async () => {
-            // 1. Auto Export CSV for Today
             await exportSalesToLocalCsv({ period: 'today', orders: todayOrders });
-            
-            // 2. Ask for Cloud Backup (JSON) after CSV is handled
             setTimeout(async () => {
-                Alert.alert(
-                    "Cloud Backup", 
-                    "Do you want to save a full data backup to Google Drive?",
-                    [
+                Alert.alert("Cloud Backup", "Do you want to save a full data backup to Google Drive?", [
                         { text: "No", style: "cancel" },
                         { text: "Yes, Backup", onPress: async () => await handleCloudBackup() }
-                    ]
-                );
-            }, 1000); // Small delay to prevent share sheet conflict
+                ]);
+            }, 1000); 
           } 
         }
       ]
@@ -185,7 +173,13 @@ export default function ReportsScreen() {
       Alert.alert(t('error'), t('invalidAmountMessage'));
       return;
     }
-    await addExpense({ category: expenseCategory || 'General', description: expenseDescription || '', amount: amountNum });
+    // Save current time as ISO String
+    await addExpense({ 
+        category: expenseCategory || 'General', 
+        description: expenseDescription || '', 
+        amount: round(amountNum),
+        date: new Date().toISOString() // Ensure ISO
+    });
     setExpenseModalVisible(false);
     loadData();
     setExpenseCategory('');
@@ -200,7 +194,6 @@ export default function ReportsScreen() {
     ]);
   };
 
-  // Styles helpers
   const cardStyle = [styles.card, { backgroundColor: theme.card }];
   const textPrimary = { color: theme.text };
   const textSecondary = { color: theme.textSecondary };
@@ -208,7 +201,7 @@ export default function ReportsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Unified Search Header */}
+      {/* Header */}
       <View style={[styles.headerContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
         <View style={[styles.searchWrapper, { backgroundColor: theme.inputBackground }]}>
           <Text style={{ marginRight: 8 }}>🔍</Text>
@@ -235,10 +228,7 @@ export default function ReportsScreen() {
               ]}
               onPress={() => setPeriod(p)}
             >
-              <Text style={[
-                styles.periodText, 
-                period === p ? { color: '#fff' } : { color: theme.text }
-              ]}>
+              <Text style={[styles.periodText, period === p ? { color: '#fff' } : { color: theme.text }]}>
                 {t(p === 'all' ? 'allTime' : p === 'week' ? 'thisWeek' : p === 'month' ? 'thisMonth' : 'today')}
               </Text>
             </TouchableOpacity>
@@ -247,7 +237,7 @@ export default function ReportsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 20 }} showsVerticalScrollIndicator={false}>
-        {/* Sales Reconciliation Card */}
+        {/* Sales */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>💰 {t('salesSummary')}</Text>
           <View style={styles.row}><Text style={textSecondary}>Cash Sales:</Text><Text style={[styles.bold, textPrimary]}>₹{cashSales.toFixed(2)}</Text></View>
@@ -260,7 +250,7 @@ export default function ReportsScreen() {
           </View>
         </View>
 
-        {/* Profit Analysis Card */}
+        {/* Profit */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>📉 {t('profitAnalysis')}</Text>
           <View style={styles.row}><Text style={textSecondary}>Total Expenses:</Text><Text style={[styles.bold, textPrimary]}>₹{totalExpenses.toFixed(2)}</Text></View>
@@ -273,7 +263,7 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* CLOSE DAY CARD (Now with Auto Export) */}
+        {/* Close Day */}
         <View style={[cardStyle, { borderTopWidth: 5, borderTopColor: theme.primary }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>🏁 {t('dayEndOperations')}</Text>
           <Text style={[styles.infoText, textSecondary]}>{t('dayEndSubtitle')}</Text>
@@ -282,7 +272,7 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Expense List Card */}
+        {/* Expenses */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>📑 {t('expenseList')}</Text>
           {filteredExpenses.length === 0 ? (
@@ -296,7 +286,8 @@ export default function ReportsScreen() {
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={[styles.bold, textPrimary]}>₹{exp.amount.toFixed(2)}</Text>
-                  <Text style={[styles.small, textSecondary]}>{exp.date}</Text>
+                  {/* DISPLAY SAFE DATE */}
+                  <Text style={[styles.small, textSecondary]}>{formatDateForDisplay(exp.date)}</Text>
                   <Text style={styles.deleteHint}>(Hold to delete)</Text>
                 </View>
               </TouchableOpacity>
@@ -304,7 +295,7 @@ export default function ReportsScreen() {
           )}
         </View>
 
-        {/* Cloud & Backup Card */}
+        {/* Backup */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>☁️ {t('backupSync')}</Text>
           <Text style={[styles.infoText, textSecondary]}>{t('backupSubtitle')}</Text>

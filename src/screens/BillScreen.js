@@ -59,6 +59,11 @@ export default function BillScreen({ navigation }) {
 
   const bottomPadding = Platform.OS === 'ios' ? insets.bottom + 10 : 15;
 
+  // --- SAFE MATH HELPER ---
+  const round = (num) => {
+    return Math.round((num + Number.EPSILON) * 100) / 100;
+  };
+
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -121,13 +126,21 @@ export default function BillScreen({ navigation }) {
     setSettingsModalVisible(true);
   };
 
-  const calculateSubtotal = () => orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const calculateGST = () => gstEnabled ? calculateSubtotal() * (gstPercentage / 100) : 0;
+  const calculateSubtotal = () => {
+    const total = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    return round(total);
+  };
+
+  const calculateGST = () => {
+    if (!gstEnabled) return 0;
+    return round(calculateSubtotal() * (gstPercentage / 100));
+  };
   
   const calculateGrandTotal = () => {
     const subtotal = calculateSubtotal();
     const gst = calculateGST();
-    const rawTotal = subtotal + gst - (parseFloat(discount) || 0);
+    const disc = parseFloat(discount) || 0;
+    const rawTotal = subtotal + gst - disc;
     return Math.round(rawTotal); 
   };
 
@@ -168,15 +181,16 @@ export default function BillScreen({ navigation }) {
     }
   };
 
-  // --- KERALA STYLE HTML GENERATOR (FOR PRINTING) ---
+  // --- KERALA STYLE HTML GENERATOR ---
   const generateBillHTML = () => {
     const subtotal = calculateSubtotal();
     const totalGst = calculateGST();
     const halfGstPercent = gstPercentage / 2;
-    const halfGstAmount = totalGst / 2;
+    const halfGstAmount = round(totalGst / 2); 
+
     const rawTotal = subtotal + totalGst - (parseFloat(discount) || 0);
     const grandTotal = Math.round(rawTotal);
-    const roundOff = (grandTotal - rawTotal).toFixed(2);
+    const roundOff = round(grandTotal - rawTotal).toFixed(2);
     const date = new Date().toLocaleDateString('en-IN');
     const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
@@ -204,7 +218,7 @@ export default function BillScreen({ navigation }) {
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
         <style>
-          @import url('[https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap](https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap)');
+          @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
           body { font-family: 'Courier Prime', monospace; width: 300px; margin: 0 auto; padding: 5px; background-color: #fff; color: #000; font-size: 12px; }
           .header { text-align: center; margin-bottom: 5px; }
           .hotel-name { font-size: 22px; font-weight: bold; margin: 0; text-transform: uppercase; }
@@ -263,20 +277,17 @@ export default function BillScreen({ navigation }) {
     `;
   };
 
-  // --- WHATSAPP TEXT GENERATOR (MONOSPACE) ---
-  // This mimics the thermal printer look using text characters
+  // --- WHATSAPP GENERATOR ---
   const generateWhatsAppText = () => {
-    // Helper to pad strings to a specific length
     const pad = (str, len, align = 'right') => {
       const s = String(str);
-      if (s.length > len) return s.substring(0, len); // Truncate
+      if (s.length > len) return s.substring(0, len);
       const spaces = ' '.repeat(len - s.length);
       return align === 'left' ? s + spaces : spaces + s;
     };
 
-    // Helper to center text
     const center = (str) => {
-        const width = 30; // WhatsApp mobile width for monospace
+        const width = 30;
         const left = Math.max(0, Math.floor((width - str.length) / 2));
         return ' '.repeat(left) + str;
     };
@@ -286,27 +297,18 @@ export default function BillScreen({ navigation }) {
     const date = new Date().toLocaleDateString('en-IN');
     const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
-    // Start Monospace Block
     let t = "```\n"; 
-    
-    // Header
     t += center(hotelName) + "\n";
-    t += center("Ph: " + hotelPhone.split(',')[0]) + "\n"; // Show first phone number
+    t += center("Ph: " + hotelPhone.split(',')[0]) + "\n";
     t += center("TAX INVOICE") + "\n";
     t += line + "\n";
-    
-    // Meta Data
     t += `Bill: ${billNumber}`.padEnd(16) + `Date: ${date}\n`;
     t += `Table: ${tableNumber || '-'}`.padEnd(16) + `Time: ${time}\n`;
     if(customerName) t += `Cust: ${customerName}\n`;
-    
     t += line + "\n";
-    
-    // Table Header: SN(2) Item(13) Q(3) R(5) A(6) = 29 chars
     t += "SN " + pad("ITEM", 12, 'left') + pad("QTY", 3) + pad("RT", 5) + pad("AMT", 6) + "\n";
     t += line + "\n";
     
-    // Items
     orderItems.forEach((item, index) => {
         t += pad(index + 1, 2, 'left') + " " + 
              pad(item.name, 12, 'left') + 
@@ -317,38 +319,34 @@ export default function BillScreen({ navigation }) {
     
     t += line + "\n";
     
-    // Totals
     const sub = calculateSubtotal();
     const gstVal = calculateGST();
     const grand = calculateGrandTotal();
     
-    t += pad("Subtotal:", 23) + pad(sub.toFixed(0), 7) + "\n";
+    t += pad("Subtotal:", 23) + pad(sub.toFixed(2), 7) + "\n";
     
     if (gstEnabled && gstVal > 0) {
-        const half = gstVal / 2;
+        const half = round(gstVal / 2);
         const p = gstPercentage / 2;
-        t += pad(`CGST (${p}%):`, 23) + pad(half.toFixed(0), 7) + "\n";
-        t += pad(`SGST (${p}%):`, 23) + pad(half.toFixed(0), 7) + "\n";
+        t += pad(`CGST (${p}%):`, 23) + pad(half.toFixed(2), 7) + "\n";
+        t += pad(`SGST (${p}%):`, 23) + pad(half.toFixed(2), 7) + "\n";
     }
     
     if (discount > 0) {
-        t += pad("Discount:", 23) + pad("-" + parseFloat(discount).toFixed(0), 7) + "\n";
+        t += pad("Discount:", 23) + pad("-" + parseFloat(discount).toFixed(2), 7) + "\n";
     }
     
     t += doubleLine + "\n";
     t += pad("GRAND TOTAL:", 16) + pad("Rs." + grand.toFixed(0), 14) + "\n";
     t += doubleLine + "\n";
-    
     t += center("Thank You! Visit Again") + "\n";
-    t += "```"; // End Monospace Block
+    t += "```"; 
     
     return t;
   };
 
   const handleWhatsApp = async () => {
     if (orderItems.length === 0) return;
-
-    // Generate the Monospace formatted text
     const text = generateWhatsAppText();
 
     if (phoneNumber) {
@@ -356,8 +354,6 @@ export default function BillScreen({ navigation }) {
         if (cleanedNumber.length === 10) {
             cleanedNumber = '91' + cleanedNumber;
         }
-        
-        // Encode the text properly for URL
         const url = `whatsapp://send?phone=${cleanedNumber}&text=${encodeURIComponent(text)}`;
         
         try {
@@ -365,18 +361,14 @@ export default function BillScreen({ navigation }) {
             if (supported) {
                 await Linking.openURL(url);
             } else {
-                Alert.alert('Error', 'WhatsApp not installed.');
+                Alert.alert('Error', 'WhatsApp is not installed on this device.');
             }
         } catch (err) { 
+            console.error("WhatsApp Error:", err);
             Alert.alert('Error', 'Could not open WhatsApp.'); 
         }
     } else {
-        // If no number, use standard share sheet
-        try { 
-            await Share.share({ message: text }); 
-        } catch (error) { 
-            Alert.alert('Error', 'Share error'); 
-        }
+        try { await Share.share({ message: text }); } catch (error) { Alert.alert('Error', 'Share error'); }
     }
   };
 
@@ -409,8 +401,16 @@ export default function BillScreen({ navigation }) {
   const textStyle = { color: theme.text };
 
   return (
-    <KeyboardAvoidingView style={[styles.container, { backgroundColor: theme.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView 
+      style={[styles.container, { backgroundColor: theme.background }]} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={{ flexGrow: 1 }}
+        showsVerticalScrollIndicator={false} 
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={[styles.billHeader, { backgroundColor: theme.primary }]}>
           <Text style={styles.hotelName}>🏨 {hotelName}</Text>
           <Text style={styles.billInfo}>{t('billNo')}: #{billNumber}</Text>

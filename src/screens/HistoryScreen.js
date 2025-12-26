@@ -14,13 +14,15 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
-import { useTheme } from '../context/ThemeContext'; 
+import { useTheme } from '../context/ThemeContext';
 import { loadOrderHistory, clearOrderHistory, removeOrderFromHistory } from '../utils/storage';
 import { exportSalesToLocalCsv } from '../utils/exportToCsv';
+// --- IMPORT NEW HELPERS ---
+import { safeDate, formatDateForDisplay, formatTimeForDisplay, isToday } from '../utils/dateHelpers';
 
 export default function HistoryScreen() {
   const { t } = useLanguage();
-  const { theme } = useTheme(); 
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [orders, setOrders] = useState([]);
@@ -40,37 +42,22 @@ export default function HistoryScreen() {
 
   const loadOrders = async () => {
     const history = await loadOrderHistory();
-    setOrders(history);
-  };
-
-  // --- SAFE DATE FORMATTER (The Fix) ---
-  const formatDisplayDate = (dateString) => {
-    if (!dateString) return '---';
-    const date = new Date(dateString);
-    // Check if the date object is valid
-    if (!isNaN(date.getTime())) {
-      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    }
-    // If invalid (likely old data stored as "26/12/2025"), return as is
-    return dateString;
+    // Sort by date descending (newest first) using safeDate
+    const sorted = (history || []).sort((a, b) => safeDate(b.date) - safeDate(a.date));
+    setOrders(sorted);
   };
 
   const getFilteredOrders = () => {
-    const todayStr = new Date().toLocaleDateString('en-IN'); 
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
     switch (filterDate) {
       case 'today':
-        return orders.filter((order) => {
-            const dStr = order.date || '';
-            return dStr.includes(todayStr) || dStr === todayStr;
-        });
+        return orders.filter((order) => isToday(order.date));
       case 'week':
         return orders.filter((order) => {
-          if (!order.date) return false;
-          const d = new Date(order.date);
-          return !isNaN(d.getTime()) && d >= weekAgo;
+          const d = safeDate(order.date);
+          return d >= weekAgo;
         });
       default:
         return orders;
@@ -148,8 +135,9 @@ export default function HistoryScreen() {
         <Text style={[styles.orderAmount, { color: theme.primary }]}>₹{item.grandTotal ? item.grandTotal.toFixed(2) : item.total.toFixed(2)}</Text>
       </View>
       <View style={styles.orderDetails}>
+        {/* USES HELPERS TO DISPLAY DATE CORRECTLY */}
         <Text style={[styles.orderDate, { color: theme.textSecondary }]}>
-            📅 {formatDisplayDate(item.date)}
+            📅 {formatDateForDisplay(item.date)}  🕐 {formatTimeForDisplay(item.date)}
         </Text>
       </View>
       <View style={styles.orderMeta}>
@@ -252,10 +240,10 @@ export default function HistoryScreen() {
                 </View>
                 
                 <View style={[styles.modalInfo, { backgroundColor: theme.inputBackground }]}>
-                  {/* FIX: Use formatDisplayDate here to prevent Invalid Date error */}
-                  <Text style={[styles.modalInfoText, { color: theme.text }]}>📅 {formatDisplayDate(selectedOrder.date)}</Text>
+                  {/* USES HELPERS TO DISPLAY DATE CORRECTLY */}
+                  <Text style={[styles.modalInfoText, { color: theme.text }]}>📅 {formatDateForDisplay(selectedOrder.date)}</Text>
+                  <Text style={[styles.modalInfoText, { color: theme.text }]}>🕐 {formatTimeForDisplay(selectedOrder.date)}</Text>
                   
-                  {selectedOrder.time && <Text style={[styles.modalInfoText, { color: theme.text }]}>🕐 {selectedOrder.time}</Text>}
                   {selectedOrder.tableNumber && <Text style={[styles.modalInfoText, { color: theme.text }]}>🪑 {t('table')}: {selectedOrder.tableNumber}</Text>}
                   {selectedOrder.customerName && <Text style={[styles.modalInfoText, { color: theme.text }]}>👤 {selectedOrder.customerName}</Text>}
                 </View>

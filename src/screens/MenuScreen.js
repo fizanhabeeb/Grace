@@ -1,5 +1,5 @@
 // src/screens/MenuScreen.js
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,17 +19,18 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
-import { useTheme } from '../context/ThemeContext'; // Import Theme
+import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
 import { loadMenu, saveMenu } from '../utils/storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
 export default function MenuScreen() {
   const { t, getCategoryName } = useLanguage();
-  const { theme, isDark } = useTheme(); // Use Theme Hook
+  const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { isLandscape, numColumns, cardWidth } = useOrientation();
 
@@ -40,7 +41,10 @@ export default function MenuScreen() {
   const [editingVariant, setEditingVariant] = useState(null);
   const [editingVariantIndex, setEditingVariantIndex] = useState(-1);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchText, setSearchText] = useState('');
+  
+  // --- DEBOUNCE STATE ---
+  const [searchText, setSearchText] = useState(''); // What user types
+  const [debouncedSearchText, setDebouncedSearchText] = useState(''); // What we filter with
 
   // Form State
   const [itemName, setItemName] = useState('');
@@ -69,58 +73,65 @@ export default function MenuScreen() {
     setMenuItems(items);
   };
 
-  // --- FILTERING LOGIC ---
+  // --- DEBOUNCE EFFECT ---
+  // Updates the filter text only after the user stops typing for 300ms
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchText(searchText);
+    }, 300);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchText]);
+
+  // --- FILTERING LOGIC (Uses debouncedSearchText) ---
   const filteredMenu = useMemo(() => {
     return menuItems.filter(item => {
       const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-      const matchesSearch = item.name.toLowerCase().includes(searchText.toLowerCase());
+      const matchesSearch = item.name.toLowerCase().includes(debouncedSearchText.toLowerCase());
       return matchesCategory && matchesSearch;
     });
-  }, [menuItems, selectedCategory, searchText]);
+  }, [menuItems, selectedCategory, debouncedSearchText]);
 
-  // --- IMAGE PICKERS ---
+  // --- IMAGE LOGIC (File System) ---
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow access to photos');
-      return;
-    }
+    if (status !== 'granted') { Alert.alert('Permission', 'Allow photos access'); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7,
     });
-    if (!result.canceled) {
-      setItemImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
-    }
+    if (!result.canceled) setItemImage(result.assets[0].uri);
   };
 
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow access to camera');
-      return;
-    }
+    if (status !== 'granted') { Alert.alert('Permission', 'Allow camera access'); return; }
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7,
     });
-    if (!result.canceled) {
-      setItemImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
-    }
+    if (!result.canceled) setItemImage(result.assets[0].uri);
   };
 
   const showImageOptions = () => {
     Alert.alert('Add Image', 'Choose an option', [
       { text: 'Camera', onPress: takePhoto },
       { text: 'Gallery', onPress: pickImage },
-      { text: 'Remove Image', onPress: () => setItemImage(null), style: 'destructive' },
+      { text: 'Remove', onPress: () => setItemImage(null), style: 'destructive' },
       { text: 'Cancel', style: 'cancel' },
     ]);
+  };
+
+  const savePermanentImage = async (uri) => {
+    if (!uri) return null;
+    if (uri.includes(FileSystem.documentDirectory)) return uri;
+    try {
+        const filename = uri.split('/').pop();
+        const newPath = FileSystem.documentDirectory + filename;
+        await FileSystem.copyAsync({ from: uri, to: newPath });
+        return newPath;
+    } catch (error) { return uri; }
   };
 
   // --- MODAL CONTROLS ---
@@ -136,56 +147,48 @@ export default function MenuScreen() {
   };
 
   const openVariantModal = (variant = null, index = -1) => {
-    setEditingVariant(variant);
-    setEditingVariantIndex(index);
-    if (variant) {
-      setVariantName(variant.name);
-      setVariantPrice(variant.price.toString());
-    } else {
-      setVariantName('');
-      setVariantPrice('');
-    }
+    setEditingVariant(variant); setEditingVariantIndex(index);
+    if (variant) { setVariantName(variant.name); setVariantPrice(variant.price.toString()); } 
+    else { setVariantName(''); setVariantPrice(''); }
     setVariantModalVisible(true);
   };
 
-  // --- SAVE / DELETE LOGIC ---
+  // --- SAVE / DELETE ---
   const saveVariant = () => {
-    if (!variantName.trim() || !variantPrice || isNaN(parseFloat(variantPrice))) {
-      Alert.alert('Error', 'Please enter valid variant name and price');
-      return;
-    }
+    if (!variantName.trim() || !variantPrice || isNaN(parseFloat(variantPrice))) return;
     const newVariant = { id: editingVariant?.id || `v${Date.now()}`, name: variantName.trim(), price: parseFloat(variantPrice) };
-    if (editingVariantIndex >= 0) {
-      const updated = [...variants]; updated[editingVariantIndex] = newVariant; setVariants(updated);
-    } else {
-      setVariants([...variants, newVariant]);
-    }
+    const updated = [...variants];
+    if (editingVariantIndex >= 0) updated[editingVariantIndex] = newVariant;
+    else updated.push(newVariant);
+    setVariants(updated);
     setVariantModalVisible(false);
   };
 
   const saveItem = async () => {
     if (!itemName.trim() || !itemPrice || isNaN(parseFloat(itemPrice))) {
-      Alert.alert(t('error'), t('enterValidPrice'));
-      return;
+      Alert.alert(t('error'), t('enterValidPrice')); return;
     }
+    let permanentImageUri = null;
+    if (itemImage) permanentImageUri = await savePermanentImage(itemImage);
+
     const newItem = {
       id: editingItem?.id || Date.now().toString(),
       name: itemName.trim(),
       price: parseFloat(itemPrice),
       category: itemCategory,
-      image: itemImage,
+      image: permanentImageUri,
       hasVariants,
       variants: hasVariants ? variants : [],
     };
+
     const updatedMenu = editingItem ? menuItems.map((i) => (i.id === editingItem.id ? newItem : i)) : [...menuItems, newItem];
     await saveMenu(updatedMenu);
     setMenuItems(updatedMenu);
     setModalVisible(false);
-    Alert.alert(t('success'), editingItem ? t('itemUpdated') : t('itemAdded'));
   };
 
   const deleteItem = (item) => {
-    Alert.alert(t('deleteItem'), `${t('deleteConfirm')} "${item.name}"?`, [
+    Alert.alert(t('deleteItem'), t('deleteConfirm'), [
       { text: t('cancel'), style: 'cancel' },
       { text: t('delete'), style: 'destructive', onPress: async () => {
           const updatedMenu = menuItems.filter((i) => i.id !== item.id);
@@ -232,19 +235,10 @@ export default function MenuScreen() {
     );
   };
 
-  // Helper styles for inputs in dark mode
-  const inputStyle = [
-    styles.input, 
-    { 
-      backgroundColor: theme.inputBackground, 
-      color: theme.text, 
-      borderColor: theme.border 
-    }
-  ];
+  const inputStyle = [styles.input, { backgroundColor: theme.inputBackground, color: theme.text, borderColor: theme.border }];
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* SEARCH BAR */}
       <View style={[styles.searchBarContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
         <View style={[styles.searchWrapper, { backgroundColor: theme.inputBackground }]}>
           <Ionicons name="search" size={20} color={theme.textSecondary} style={{ marginRight: 8 }} />
@@ -253,7 +247,7 @@ export default function MenuScreen() {
             placeholder={t('enterItemName')}
             placeholderTextColor={theme.textSecondary}
             value={searchText}
-            onChangeText={setSearchText}
+            onChangeText={setSearchText} // Updates immediate state
           />
           {searchText !== '' && (
             <TouchableOpacity onPress={() => setSearchText('')}>
@@ -263,7 +257,6 @@ export default function MenuScreen() {
         </View>
       </View>
 
-      {/* CATEGORY FILTER */}
       <View style={{ height: 60 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryContent}>
           {categories.map((category) => (
@@ -277,12 +270,7 @@ export default function MenuScreen() {
               ]}
               onPress={() => setSelectedCategory(category)}
             >
-              <Text style={[
-                styles.categoryText, 
-                selectedCategory === category 
-                  ? { color: '#fff' } 
-                  : { color: theme.text }
-              ]}>
+              <Text style={[styles.categoryText, selectedCategory === category ? { color: '#fff' } : { color: theme.text }]}>
                 {getCategoryName(category)}
               </Text>
             </TouchableOpacity>
@@ -299,12 +287,12 @@ export default function MenuScreen() {
         renderItem={renderMenuItem}
         keyExtractor={(item) => item.id}
         numColumns={numColumns}
-        key={numColumns} // Force re-render on orientation change
+        key={numColumns} 
         contentContainerStyle={{ padding: 5, paddingBottom: bottomPadding }}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-            {searchText ? "No items match your search" : t('noItemsCategory')}
+            {debouncedSearchText ? "No items match your search" : t('noItemsCategory')}
           </Text>
         }
       />
@@ -333,7 +321,7 @@ export default function MenuScreen() {
               <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>{t('itemName')}</Text>
               <TextInput style={inputStyle} value={itemName} onChangeText={setItemName} placeholder={t('enterItemName')} placeholderTextColor={theme.textSecondary} />
 
-              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>{t('price')} (₹)</Text>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>{t('price')}</Text>
               <TextInput style={inputStyle} value={itemPrice} onChangeText={setItemPrice} keyboardType="numeric" placeholderTextColor={theme.textSecondary} />
 
               <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>{t('category')}</Text>
@@ -342,18 +330,10 @@ export default function MenuScreen() {
                   {categories.filter(c => c !== 'All').map(cat => (
                     <TouchableOpacity 
                       key={cat} 
-                      style={[
-                        styles.categoryChip, 
-                        itemCategory === cat 
-                          ? { backgroundColor: theme.primary } 
-                          : { backgroundColor: theme.inputBackground, borderWidth: 1, borderColor: theme.border }
-                      ]} 
+                      style={[styles.categoryChip, itemCategory === cat ? { backgroundColor: theme.primary } : { backgroundColor: theme.inputBackground, borderWidth: 1, borderColor: theme.border }]} 
                       onPress={() => setItemCategory(cat)}
                     >
-                      <Text style={[
-                        styles.categoryChipText, 
-                        { color: itemCategory === cat ? '#fff' : theme.text }
-                      ]}>{getCategoryName(cat)}</Text>
+                      <Text style={[styles.categoryChipText, { color: itemCategory === cat ? '#fff' : theme.text }]}>{getCategoryName(cat)}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -361,11 +341,7 @@ export default function MenuScreen() {
 
               <View style={styles.variantToggle}>
                 <Text style={[styles.inputLabel, { color: theme.text }]}>Has Variants?</Text>
-                <Switch 
-                  value={hasVariants} 
-                  onValueChange={setHasVariants} 
-                  trackColor={{ false: theme.border, true: theme.primary }} 
-                />
+                <Switch value={hasVariants} onValueChange={setHasVariants} trackColor={{ false: theme.border, true: theme.primary }} />
               </View>
 
               {hasVariants && (
@@ -406,24 +382,8 @@ export default function MenuScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { width: '80%', backgroundColor: theme.card }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>{editingVariant ? 'Edit Variant' : 'Add Variant'}</Text>
-            
-            <TextInput 
-              style={inputStyle} 
-              value={variantName} 
-              onChangeText={setVariantName} 
-              placeholder="Variant Name" 
-              placeholderTextColor={theme.textSecondary}
-            />
-            
-            <TextInput 
-              style={inputStyle} 
-              value={variantPrice} 
-              onChangeText={setVariantPrice} 
-              placeholder="Price" 
-              keyboardType="numeric" 
-              placeholderTextColor={theme.textSecondary}
-            />
-            
+            <TextInput style={inputStyle} value={variantName} onChangeText={setVariantName} placeholder="Variant Name" placeholderTextColor={theme.textSecondary}/>
+            <TextInput style={inputStyle} value={variantPrice} onChangeText={setVariantPrice} placeholder="Price" keyboardType="numeric" placeholderTextColor={theme.textSecondary}/>
             <View style={styles.modalButtons}>
               <TouchableOpacity style={{ flex: 1, padding: 15, alignItems: 'center' }} onPress={() => setVariantModalVisible(false)}>
                 <Text style={{ color: theme.text }}>Cancel</Text>
