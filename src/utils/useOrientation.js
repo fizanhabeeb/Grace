@@ -1,29 +1,27 @@
-// useOrientation.js - Hook to detect screen orientation changes
-
-import { useState, useEffect } from 'react';
-import { Dimensions } from 'react-native';
+// src/utils/useOrientation.js
+import { useWindowDimensions } from 'react-native';
 
 export default function useOrientation() {
-  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
-  
-  useEffect(() => {
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
-      setDimensions(window);
-    });
-    
-    return () => {
-      subscription?.remove();
-    };
-  }, []);
-  
-  const { width, height } = dimensions;
+  // modern hook: auto-updates on rotation, no need for useEffect/listeners
+  const { width, height } = useWindowDimensions();
+
   const isLandscape = width > height;
-  const isPortrait = height > width;
+  const isPortrait = height >= width;
+  
+  // "380" is a good breakpoint for small phones (iPhone SE, older Androids)
   const isSmallScreen = Math.min(width, height) < 380;
+  
+  // "600" is the standard Android breakpoint for 7-inch tablets and up
   const isTablet = Math.min(width, height) >= 600;
   
-  // Calculate responsive values
+  // GRID LOGIC:
+  // Tablet Landscape: 4 columns
+  // Tablet Portrait:  3 columns
+  // Phone Landscape:  3 columns
+  // Phone Portrait:   2 columns
   const numColumns = isLandscape ? (isTablet ? 4 : 3) : (isTablet ? 3 : 2);
+  
+  // Calculates exact card width based on screen size (assuming ~10px margins)
   const cardWidth = (width - (numColumns + 1) * 10) / numColumns;
   
   return {
