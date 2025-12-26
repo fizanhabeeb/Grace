@@ -10,6 +10,7 @@ import {
   Modal,
   ScrollView,
   Platform,
+  Share, // <--- Ensures Share is imported
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,10 +19,6 @@ import { useTheme } from '../context/ThemeContext';
 import { loadOrderHistory, clearOrderHistory, removeOrderFromHistory, loadSettings } from '../utils/storage';
 import { exportSalesToLocalCsv } from '../utils/exportToCsv';
 import { safeDate, formatDateForDisplay, formatTimeForDisplay, isToday } from '../utils/dateHelpers';
-
-// --- NEW IMPORTS FOR SHARING ---
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 
 export default function HistoryScreen() {
   const { t } = useLanguage();
@@ -109,65 +106,124 @@ export default function HistoryScreen() {
     );
   };
 
-  // --- NEW: SHARE BILL FUNCTION ---
+  // --- MODIFIED: SHARE BILL EXACTLY LIKE IMAGE ---
   const handleShareBill = async (order) => {
     try {
       const settings = await loadSettings();
-      const hotelName = settings.hotelName || 'Hotel Grace';
-      const hotelPhone = settings.hotelPhone || '';
-      const hotelAddress = settings.hotelAddress || '';
+      const hotelName = settings.hotelName || 'HOTEL GRACE';
+      // Use the phone number from settings, or fallback to the one in your image
+      const hotelPhone = settings.hotelPhone || '+91 9747640102'; 
+      
+      // Helper to format dates and times
+      const dateObj = safeDate(order.date);
+      // Assuming formatDateForDisplay returns DD/MM/YYYY
+      const dateStr = formatDateForDisplay(dateObj); 
+      const timeStr = formatTimeForDisplay(dateObj);
+      
+      // 1. FORMATTING HELPERS
+      // Centers text in a 32-character wide line
+      const center = (str) => {
+        const width = 32;
+        if (str.length >= width) return str;
+        const leftPadding = Math.floor((width - str.length) / 2);
+        return ' '.repeat(leftPadding) + str;
+      };
 
-      const htmlContent = `
-        <html>
-          <head>
-            <style>
-              body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; }
-              .header { text-align: center; margin-bottom: 20px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
-              .title { font-size: 24px; font-weight: bold; margin: 0; }
-              .subtitle { font-size: 14px; color: #555; margin: 5px 0; }
-              .meta { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 15px; }
-              table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-              th { text-align: left; border-bottom: 1px solid #000; padding: 5px 0; font-size: 12px; }
-              td { padding: 5px 0; font-size: 12px; }
-              .price { text-align: right; }
-              .totals { border-top: 1px dashed #000; padding-top: 10px; }
-              .row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; }
-              .grand { font-size: 18px; font-weight: bold; margin-top: 10px; }
-              .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #888; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <h1 class="title">${hotelName}</h1>
-              <p class="subtitle">${hotelAddress}</p>
-              <p class="subtitle">Tel: ${hotelPhone}</p>
-            </div>
-            <div class="meta">
-              <span>Bill No: ${order.billNumber || 'N/A'}</span>
-              <span>${order.date} | ${order.time}</span>
-            </div>
-            <table>
-              <tr><th>Item</th><th class="price">Qty</th><th class="price">Price</th><th class="price">Total</th></tr>
-              ${order.items.map(item => `
-                <tr><td>${item.name}</td><td class="price">${item.quantity}</td><td class="price">${item.price}</td><td class="price">${item.quantity * item.price}</td></tr>
-              `).join('')}
-            </table>
-            <div class="totals">
-              <div class="row"><span>Total Items:</span><span>${order.items.reduce((sum, i) => sum + i.quantity, 0)}</span></div>
-              <div class="row grand"><span>GRAND TOTAL:</span><span>₹${order.grandTotal.toFixed(2)}</span></div>
-              <div class="row" style="margin-top:5px; font-size:12px; color:#666;"><span>Payment:</span><span>${order.paymentMode || 'Cash'}</span></div>
-            </div>
-            <div class="footer"><p>Thank you for dining with us!</p></div>
-          </body>
-        </html>
-      `;
+      // Formats a row: SN(2) Item(13) Qty(3) Rate(6) Amt(6)
+      // Total width: 32 characters to fit mobile screens perfectly
+      const formatRow = (sn, item, qty, rate, amt) => {
+        const snStr = sn.toString().padEnd(2, ' ');
+        // Truncate item name to 13 chars so lines don't break
+        const itemStr = item.substring(0, 13).padEnd(13, ' ');
+        const qtyStr = qty.toString().padStart(3, ' ');
+        const rateStr = rate.toString().padStart(6, ' ');
+        const amtStr = amt.toString().padStart(6, ' '); // slightly tighter to fit 32
+        
+        return `${snStr} ${itemStr}${qtyStr}${rateStr} ${amtStr}`;
+      };
 
-      const { uri } = await Print.printToFileAsync({ html: htmlContent });
-      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+      const dashedLine = '--------------------------------';
+      const doubleLine = '================================';
+
+      // 2. CONSTRUCT THE BILL STRING
+      let bill = "";
+      
+      // Start WhatsApp Monospace Block
+      bill += "```\n"; 
+      
+      // Header
+      bill += center(hotelName) + "\n";
+      bill += center(`Ph: ${hotelPhone}`) + "\n";
+      bill += center("TAX INVOICE") + "\n";
+      bill += dashedLine + "\n";
+      
+      // Meta Data (Bill No & Date)
+      const billLabel = `Bill: ${order.billNumber}`;
+      const dateLabel = `Date: ${dateStr}`;
+      // Calculate space between to justify left/right
+      const space1 = 32 - billLabel.length - dateLabel.length;
+      bill += `${billLabel}${' '.repeat(Math.max(0, space1))}${dateLabel}\n`;
+
+      // Meta Data (Table & Time)
+      const tableLabel = `Table: ${order.tableNumber || '-'}`;
+      const timeLabel = `Time: ${timeStr}`;
+      const space2 = 32 - tableLabel.length - timeLabel.length;
+      bill += `${tableLabel}${' '.repeat(Math.max(0, space2))}${timeLabel}\n`;
+      
+      bill += dashedLine + "\n";
+      
+      // Columns Header
+      // Matches the spacing of formatRow
+      bill += "SN ITEM          QTY    RT    AMT\n"; 
+      bill += dashedLine + "\n";
+      
+      // Items Loop
+      order.items.forEach((item, index) => {
+        const total = item.quantity * item.price;
+        bill += formatRow(
+          index + 1,
+          item.name,
+          item.quantity,
+          item.price, // Keep as integer if possible like image
+          total
+        ) + "\n";
+      });
+      
+      bill += dashedLine + "\n";
+      
+      // Subtotal (Right Aligned)
+      const finalTotal = order.grandTotal || order.total || 0;
+      const subLabel = "Subtotal: ";
+      const subValue = finalTotal.toFixed(2); // "45.00"
+      bill += (subLabel + subValue).padStart(32, ' ') + "\n";
+      
+      bill += doubleLine + "\n";
+      
+      // Grand Total
+      const grandLabel = "GRAND TOTAL:";
+      // Logic: If whole number show "Rs.45", else "Rs.45.50"
+      const isWhole = finalTotal % 1 === 0;
+      const grandValue = `Rs.${isWhole ? finalTotal : finalTotal.toFixed(2)}`;
+      
+      const space3 = 32 - grandLabel.length - grandValue.length;
+      bill += `${grandLabel}${' '.repeat(Math.max(0, space3))}${grandValue}\n`;
+      
+      bill += doubleLine + "\n";
+      
+      // Footer
+      bill += center("Thank You! Visit Again") + "\n";
+      
+      // End WhatsApp Monospace Block
+      bill += "```";
+
+      // 3. SHARE
+      await Share.share({
+        message: bill,
+      });
 
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "Could not generate shareable bill.");
+      Alert.alert("Error", "Could not share bill.");
     }
   };
 
@@ -298,7 +354,7 @@ export default function HistoryScreen() {
                 <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15}}>
                    <Text style={[styles.modalTitle, { color: theme.primary }]}>{t('bill')} #{selectedOrder.billNumber}</Text>
                    
-                   {/* --- NEW: SHARE BUTTON INSIDE MODAL --- */}
+                   {/* --- SHARE BUTTON INSIDE MODAL --- */}
                    <TouchableOpacity onPress={() => handleShareBill(selectedOrder)} style={{marginRight: 15}}>
                       <Text style={{fontSize: 24}}>📤</Text>
                    </TouchableOpacity>
