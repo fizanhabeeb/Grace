@@ -18,18 +18,9 @@ import {
   loadOrderHistory, 
   loadExpenses, 
   addExpense, 
-  removeExpense, 
-  createBackupObject,
-  updateLastBackupTimestamp,
-  restoreFullBackup 
+  removeExpense
 } from '../utils/storage';
-import { restoreAllData } from '../utils/backup'; 
 import { exportSalesToLocalCsv } from '../utils/exportToCsv';
-import * as Sharing from 'expo-sharing';
-
-// --- FIX 1: USE LEGACY IMPORT (Required by new Expo SDKs) ---
-import * as FileSystem from 'expo-file-system/legacy';
-import * as DocumentPicker from 'expo-document-picker';
 
 export default function ReportsScreen() {
   const { t } = useLanguage();
@@ -66,7 +57,6 @@ export default function ReportsScreen() {
     const today = new Date().toLocaleDateString('en-IN');
     if (period === 'today') return dateStr.includes(today) || dateStr === today;
     
-    // Simple date parsing for filters
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return false; 
 
@@ -100,90 +90,6 @@ export default function ReportsScreen() {
   const totalExpenses = round(filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0));
   const profit = round(totalSales - totalExpenses);
 
-  // --- 1. CLOUD BACKUP (EXPORT) ---
-  const handleCloudBackup = async () => {
-    try {
-      const backupData = await createBackupObject();
-      if (!backupData || Object.keys(backupData).length === 0) {
-        Alert.alert("No Data", "There is no data to back up yet.");
-        return;
-      }
-      const fileName = `Grace_POS_Backup_${new Date().getTime()}.json`;
-      const fileUri = `${FileSystem.documentDirectory}${fileName}`; // Use documentDirectory instead of cache for safety
-      const jsonString = JSON.stringify(backupData);
-      
-      // --- FIX 2: Use string 'utf8' directly (Avoids constant crash) ---
-      await FileSystem.writeAsStringAsync(fileUri, jsonString, { encoding: 'utf8' });
-
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'application/json',
-          dialogTitle: 'Save Backup File',
-          UTI: 'public.json'
-        });
-        await updateLastBackupTimestamp();
-      } else {
-        Alert.alert("Error", "Sharing is not supported on this device.");
-      }
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Backup Failed", error.message || "Unknown error occurred");
-    }
-  };
-
-  // --- 2. IMPORT BACKUP (RESTORE) ---
-  const handleImportBackup = async () => {
-    try {
-      Alert.alert(
-        "Restore Data", 
-        "This will OVERWRITE your current data with the backup file. Are you sure?",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Pick File", onPress: async () => {
-              // 1. Pick the file
-              const result = await DocumentPicker.getDocumentAsync({
-                type: 'application/json', 
-                copyToCacheDirectory: true
-              });
-
-              if (result.canceled) return;
-
-              // 2. Read the file
-              const fileUri = result.assets ? result.assets[0].uri : result.uri;
-              
-              // --- FIX 2: Use string 'utf8' directly ---
-              const fileContent = await FileSystem.readAsStringAsync(fileUri, { encoding: 'utf8' });
-              
-              // 3. Parse and Restore
-              try {
-                const parsedData = JSON.parse(fileContent);
-                
-                // Basic validation
-                if (!parsedData.history && !parsedData.menu && !parsedData.orders) {
-                  Alert.alert("Invalid File", "This does not look like a valid backup file.");
-                  return;
-                }
-
-                const success = await restoreFullBackup(parsedData);
-                if (success) {
-                  await loadData(); // Reload screen
-                  Alert.alert("Success", "Data restored successfully!");
-                } else {
-                  Alert.alert("Error", "Failed to restore data.");
-                }
-              } catch (parseError) {
-                Alert.alert("Error", "Corrupted backup file.");
-              }
-          }}
-        ]
-      );
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", err.message || "Could not pick file.");
-    }
-  };
-
   const handleCloseDay = async () => {
     const today = new Date().toLocaleDateString('en-IN');
     const todayOrders = orders.filter(o => o.date && (o.date.includes(today) || o.date === today));
@@ -205,12 +111,7 @@ export default function ReportsScreen() {
           text: "Export & Close", 
           onPress: async () => {
             await exportSalesToLocalCsv({ period: 'today', orders: todayOrders });
-            setTimeout(async () => {
-                Alert.alert("Cloud Backup", "Save full data backup to Drive?", [
-                        { text: "No", style: "cancel" },
-                        { text: "Yes, Backup", onPress: handleCloudBackup }
-                ]);
-            }, 1000); 
+            Alert.alert("Success", "Daily report saved to Downloads.");
           } 
         }
       ]
@@ -233,7 +134,6 @@ export default function ReportsScreen() {
     ]);
   };
 
-  // Helper styles
   const cardStyle = [styles.card, { backgroundColor: theme.card }];
   const textPrimary = { color: theme.text };
   const textSecondary = { color: theme.textSecondary };
@@ -303,35 +203,6 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Backup & Restore Card */}
-        <View style={cardStyle}>
-          <Text style={[styles.cardTitle, { color: theme.primary }]}>☁️ {t('backupSync')}</Text>
-          <Text style={[styles.infoText, textSecondary]}>{t('backupSubtitle')}</Text>
-          
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            {/* BACKUP BUTTON */}
-            <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#4285F4', flex: 1 }]} onPress={handleCloudBackup}>
-              <Text style={styles.cloudBtnText}>⬆ {t('backupDrive')}</Text>
-            </TouchableOpacity>
-            
-            {/* RESTORE BUTTON */}
-            <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#34A853', flex: 1 }]} onPress={handleImportBackup}>
-              <Text style={styles.cloudBtnText}>⬇ Import Backup</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          
-          <TouchableOpacity style={[styles.backupBtn, {backgroundColor: '#FF7043'}]} onPress={() => {
-            Alert.alert(t('restoreConfirmTitle'), t('restoreConfirmMessage'), [
-              { text: t('cancel'), style: 'cancel' },
-              { text: t('restoreDataLabel'), style: 'destructive', onPress: async () => { await restoreAllData(); loadData(); } },
-            ]);
-          }}>
-            <Text style={{ color: '#fff', fontWeight: 'bold' }}>⏪ {t('restoreDataLabel')} (Reset)</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Expenses List */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>📑 {t('expenseList')}</Text>
@@ -397,11 +268,7 @@ const styles = StyleSheet.create({
   small: { fontSize: 11 },
   addBtn: { padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 15 },
   expenseItem: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1 },
-  cloudBtn: { padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
-  cloudBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
-  backupBtn: { padding: 12, borderRadius: 10, alignItems: 'center' },
   emptyText: { fontStyle: 'italic', textAlign: 'center', paddingVertical: 10 },
-  deleteHint: { fontSize: 10, color: '#ff4444', textAlign: 'right', marginTop: 2 },
   infoText: { fontSize: 13, marginBottom: 10 },
   closeDayBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10, borderWidth: 1 },
   closeDayBtnText: { fontWeight: '900', letterSpacing: 1 },

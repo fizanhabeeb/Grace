@@ -1,8 +1,9 @@
 // App.js
 import React from 'react';
-import { StatusBar } from 'expo-status-bar'; // Restored this import
+import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack'; // <--- NEW IMPORT
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TouchableOpacity, Text, View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,9 +19,12 @@ import OrderScreen from './src/screens/OrderScreen';
 import BillScreen from './src/screens/BillScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
+import SettingsScreen from './src/screens/SettingsScreen'; // <--- NEW IMPORT
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator(); // <--- CREATE STACK
 
+// --- 1. THE TAB NAVIGATOR (Your existing menu) ---
 function TabNavigator() {
   const { t, language, toggleLanguage } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
@@ -40,7 +44,6 @@ function TabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        // Dynamic Theme Colors
         tabBarActiveTintColor: theme.primary, 
         tabBarInactiveTintColor: isDark ? '#888' : '#888',
         tabBarStyle: {
@@ -71,15 +74,12 @@ function TabNavigator() {
           fontWeight: '800',
           fontSize: 18,
         },
-        // Combined Header Right: Theme Toggle + Language Toggle
         headerRight: () => (
           <View style={styles.headerRightContainer}>
-            {/* Theme Toggle */}
             <TouchableOpacity onPress={toggleTheme} style={styles.iconButton}>
               <Ionicons name={isDark ? "sunny" : "moon"} size={20} color="#fff" />
             </TouchableOpacity>
 
-            {/* Language Toggle */}
             <TouchableOpacity onPress={toggleLanguage} style={styles.langButton}>
               <Text style={styles.langButtonText}>
                 {language === 'en' ? 'മലയാളം' : 'ENG'}
@@ -99,15 +99,49 @@ function TabNavigator() {
   );
 }
 
+// --- 2. THE ROOT NAVIGATOR (Handles Tabs + Settings) ---
+function RootNavigator() {
+  const { theme } = useTheme();
+
+  return (
+    <Stack.Navigator>
+      {/* The Main App (Tabs) - Hide Header because Tabs have their own */}
+      <Stack.Screen 
+        name="MainTabs" 
+        component={TabNavigator} 
+        options={{ headerShown: false }} 
+      />
+      
+      {/* The Settings Screen - Show Header with Theme Colors */}
+      <Stack.Screen 
+        name="Settings" 
+        component={SettingsScreen} 
+        options={{ 
+          title: 'Admin Settings',
+          headerStyle: {
+            backgroundColor: theme.primary,
+          },
+          headerTintColor: theme.headerText,
+          headerTitleStyle: {
+            fontWeight: '800',
+            fontSize: 18,
+          },
+        }} 
+      />
+    </Stack.Navigator>
+  );
+}
+
+// --- 3. MAIN APP COMPONENT ---
 export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
         <LanguageProvider>
           <NavigationContainer>
-            {/* Restored StatusBar with light style (white text) for the dark header */}
             <StatusBar style="light" /> 
-            <TabNavigator />
+            {/* Use RootNavigator instead of TabNavigator */}
+            <RootNavigator /> 
           </NavigationContainer>
         </LanguageProvider>
       </ThemeProvider>

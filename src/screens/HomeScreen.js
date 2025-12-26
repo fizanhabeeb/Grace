@@ -21,7 +21,7 @@ export default function HomeScreen({ navigation }) {
   const { theme, isDark } = useTheme(); // Use Theme
   const insets = useSafeAreaInsets();
   const { isLandscape, isSmallScreen, isTablet } = useOrientation();
-   
+    
   const [todaySales, setTodaySales] = useState({ count: 0, total: 0 });
   const [recentOrders, setRecentOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -140,6 +140,8 @@ export default function HomeScreen({ navigation }) {
           {/* Quick Actions */}
           <View style={[styles.card, dynamicStyles.card]}>
             <Text style={[styles.sectionTitle, textStyle]}>⚡ {t('quickActions')}</Text>
+            
+            {/* Row 1 */}
             <View style={styles.actionRow}>
               <TouchableOpacity 
                 style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#4CAF50' }]}
@@ -156,6 +158,8 @@ export default function HomeScreen({ navigation }) {
                 <Text style={styles.actionText}>{t('editMenu')}</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Row 2 */}
             <View style={styles.actionRow}>
               <TouchableOpacity 
                 style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#FF9800' }]}
@@ -172,6 +176,18 @@ export default function HomeScreen({ navigation }) {
                 <Text style={styles.actionText}>{t('history')}</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Row 3: SETTINGS BUTTON (Added Here) */}
+            <View style={styles.actionRow}>
+               <TouchableOpacity 
+                style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#607D8B' }]} // Grey color for Admin
+                onPress={() => navigation.navigate('Settings')}
+              >
+                <Text style={styles.actionEmoji}>⚙️</Text>
+                <Text style={styles.actionText}>Settings</Text>
+              </TouchableOpacity>
+            </View>
+
           </View>
 
           {/* Recent Orders */}
