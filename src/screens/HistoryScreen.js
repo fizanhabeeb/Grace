@@ -15,10 +15,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
-import { loadOrderHistory, clearOrderHistory, removeOrderFromHistory } from '../utils/storage';
+import { loadOrderHistory, clearOrderHistory, removeOrderFromHistory, loadSettings } from '../utils/storage';
 import { exportSalesToLocalCsv } from '../utils/exportToCsv';
-// --- IMPORT NEW HELPERS ---
 import { safeDate, formatDateForDisplay, formatTimeForDisplay, isToday } from '../utils/dateHelpers';
+
+// --- NEW IMPORTS FOR SHARING ---
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 export default function HistoryScreen() {
   const { t } = useLanguage();
@@ -42,7 +45,6 @@ export default function HistoryScreen() {
 
   const loadOrders = async () => {
     const history = await loadOrderHistory();
-    // Sort by date descending (newest first) using safeDate
     const sorted = (history || []).sort((a, b) => safeDate(b.date) - safeDate(a.date));
     setOrders(sorted);
   };
@@ -107,6 +109,68 @@ export default function HistoryScreen() {
     );
   };
 
+  // --- NEW: SHARE BILL FUNCTION ---
+  const handleShareBill = async (order) => {
+    try {
+      const settings = await loadSettings();
+      const hotelName = settings.hotelName || 'Hotel Grace';
+      const hotelPhone = settings.hotelPhone || '';
+      const hotelAddress = settings.hotelAddress || '';
+
+      const htmlContent = `
+        <html>
+          <head>
+            <style>
+              body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; }
+              .header { text-align: center; margin-bottom: 20px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+              .title { font-size: 24px; font-weight: bold; margin: 0; }
+              .subtitle { font-size: 14px; color: #555; margin: 5px 0; }
+              .meta { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 15px; }
+              table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+              th { text-align: left; border-bottom: 1px solid #000; padding: 5px 0; font-size: 12px; }
+              td { padding: 5px 0; font-size: 12px; }
+              .price { text-align: right; }
+              .totals { border-top: 1px dashed #000; padding-top: 10px; }
+              .row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 14px; }
+              .grand { font-size: 18px; font-weight: bold; margin-top: 10px; }
+              .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #888; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1 class="title">${hotelName}</h1>
+              <p class="subtitle">${hotelAddress}</p>
+              <p class="subtitle">Tel: ${hotelPhone}</p>
+            </div>
+            <div class="meta">
+              <span>Bill No: ${order.billNumber || 'N/A'}</span>
+              <span>${order.date} | ${order.time}</span>
+            </div>
+            <table>
+              <tr><th>Item</th><th class="price">Qty</th><th class="price">Price</th><th class="price">Total</th></tr>
+              ${order.items.map(item => `
+                <tr><td>${item.name}</td><td class="price">${item.quantity}</td><td class="price">${item.price}</td><td class="price">${item.quantity * item.price}</td></tr>
+              `).join('')}
+            </table>
+            <div class="totals">
+              <div class="row"><span>Total Items:</span><span>${order.items.reduce((sum, i) => sum + i.quantity, 0)}</span></div>
+              <div class="row grand"><span>GRAND TOTAL:</span><span>₹${order.grandTotal.toFixed(2)}</span></div>
+              <div class="row" style="margin-top:5px; font-size:12px; color:#666;"><span>Payment:</span><span>${order.paymentMode || 'Cash'}</span></div>
+            </div>
+            <div class="footer"><p>Thank you for dining with us!</p></div>
+          </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Error", "Could not generate shareable bill.");
+    }
+  };
+
   const filteredOrders = getFilteredOrders();
 
   const handleExportToCsv = async () => {
@@ -135,7 +199,6 @@ export default function HistoryScreen() {
         <Text style={[styles.orderAmount, { color: theme.primary }]}>₹{item.grandTotal ? item.grandTotal.toFixed(2) : item.total.toFixed(2)}</Text>
       </View>
       <View style={styles.orderDetails}>
-        {/* USES HELPERS TO DISPLAY DATE CORRECTLY */}
         <Text style={[styles.orderDate, { color: theme.textSecondary }]}>
             📅 {formatDateForDisplay(item.date)}  🕐 {formatTimeForDisplay(item.date)}
         </Text>
@@ -234,13 +297,18 @@ export default function HistoryScreen() {
               <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15}}>
                    <Text style={[styles.modalTitle, { color: theme.primary }]}>{t('bill')} #{selectedOrder.billNumber}</Text>
+                   
+                   {/* --- NEW: SHARE BUTTON INSIDE MODAL --- */}
+                   <TouchableOpacity onPress={() => handleShareBill(selectedOrder)} style={{marginRight: 15}}>
+                      <Text style={{fontSize: 24}}>📤</Text>
+                   </TouchableOpacity>
+
                    <TouchableOpacity onPress={() => handleDeleteBill(selectedOrder.id, selectedOrder.billNumber)}>
                       <Text style={{fontSize: 24}}>🗑️</Text>
                    </TouchableOpacity>
                 </View>
                 
                 <View style={[styles.modalInfo, { backgroundColor: theme.inputBackground }]}>
-                  {/* USES HELPERS TO DISPLAY DATE CORRECTLY */}
                   <Text style={[styles.modalInfoText, { color: theme.text }]}>📅 {formatDateForDisplay(selectedOrder.date)}</Text>
                   <Text style={[styles.modalInfoText, { color: theme.text }]}>🕐 {formatTimeForDisplay(selectedOrder.date)}</Text>
                   
