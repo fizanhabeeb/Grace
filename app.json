@@ -19,11 +19,17 @@
       "requireFullScreen": false
     },
     "android": {
+      "package": "com.hotelgrace.billing",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#8B0000"
       },
-      "package": "com.zanif.hotelgracepos"
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "INTERNET"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

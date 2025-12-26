@@ -21,16 +21,13 @@ import {
   removeExpense, 
   createBackupObject,
   updateLastBackupTimestamp,
-  restoreFullBackup // <--- IMPORT THIS
+  restoreFullBackup 
 } from '../utils/storage';
 import { restoreAllData } from '../utils/backup'; 
 import { exportSalesToLocalCsv } from '../utils/exportToCsv';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
-import * as DocumentPicker from 'expo-document-picker'; // <--- IMPORT THIS
-
-// --- GLOBAL STYLES (If you created them, otherwise keep your local styles) ---
-// import { createGlobalStyles } from '../styles/globalStyles';
+import * as DocumentPicker from 'expo-document-picker';
 
 export default function ReportsScreen() {
   const { t } = useLanguage();
@@ -67,7 +64,6 @@ export default function ReportsScreen() {
     const today = new Date().toLocaleDateString('en-IN');
     if (period === 'today') return dateStr.includes(today) || dateStr === today;
     
-    // Simple date parsing for filters
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return false; 
 
@@ -113,7 +109,8 @@ export default function ReportsScreen() {
       const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
       const jsonString = JSON.stringify(backupData);
       
-      await FileSystem.writeAsStringAsync(fileUri, jsonString, { encoding: FileSystem.EncodingType.UTF8 });
+      // --- FIX: Use string 'utf8' instead of FileSystem.EncodingType.UTF8 ---
+      await FileSystem.writeAsStringAsync(fileUri, jsonString, { encoding: 'utf8' });
 
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
@@ -127,7 +124,8 @@ export default function ReportsScreen() {
         Alert.alert("Error", "Sharing is not supported on this device.");
       }
     } catch (error) {
-      Alert.alert("Backup Failed", "Please check permissions and try again.");
+      console.error(error);
+      Alert.alert("Backup Failed", error.message || "Unknown error occurred");
     }
   };
 
@@ -140,31 +138,29 @@ export default function ReportsScreen() {
         [
           { text: "Cancel", style: "cancel" },
           { text: "Pick File", onPress: async () => {
-              // 1. Pick the file
               const result = await DocumentPicker.getDocumentAsync({
-                type: 'application/json', // Only JSON files
+                type: 'application/json', 
                 copyToCacheDirectory: true
               });
 
               if (result.canceled) return;
 
-              // 2. Read the file
               const fileUri = result.assets ? result.assets[0].uri : result.uri;
-              const fileContent = await FileSystem.readAsStringAsync(fileUri);
               
-              // 3. Parse and Restore
+              // Reading usually doesn't need explicit encoding, but we can be safe
+              const fileContent = await FileSystem.readAsStringAsync(fileUri, { encoding: 'utf8' });
+              
               try {
                 const parsedData = JSON.parse(fileContent);
                 
-                // Basic validation
-                if (!parsedData.history && !parsedData.menu) {
+                if (!parsedData.history && !parsedData.menu && !parsedData.orders) {
                   Alert.alert("Invalid File", "This does not look like a valid backup file.");
                   return;
                 }
 
                 const success = await restoreFullBackup(parsedData);
                 if (success) {
-                  await loadData(); // Reload screen
+                  await loadData(); 
                   Alert.alert("Success", "Data restored successfully!");
                 } else {
                   Alert.alert("Error", "Failed to restore data.");
@@ -176,12 +172,12 @@ export default function ReportsScreen() {
         ]
       );
     } catch (err) {
-      Alert.alert("Error", "Could not pick file.");
+      console.error(err);
+      Alert.alert("Error", err.message || "Could not pick file.");
     }
   };
 
   const handleCloseDay = async () => {
-    // ... (Keep existing logic)
     const today = new Date().toLocaleDateString('en-IN');
     const todayOrders = orders.filter(o => o.date && (o.date.includes(today) || o.date === today));
     
@@ -214,7 +210,6 @@ export default function ReportsScreen() {
     );
   };
 
-  // ... (Keep Expenses Logic: handleSaveExpense, handleDeleteExpense) ...
   const handleSaveExpense = async () => {
     const amountNum = parseFloat(expenseAmount);
     if (!expenseAmount || isNaN(amountNum)) { setIsAmountValid(false); return; }
@@ -231,7 +226,6 @@ export default function ReportsScreen() {
     ]);
   };
 
-  // Helper styles
   const cardStyle = [styles.card, { backgroundColor: theme.card }];
   const textPrimary = { color: theme.text };
   const textSecondary = { color: theme.textSecondary };
@@ -239,7 +233,6 @@ export default function ReportsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Header */}
       <View style={[styles.headerContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
         <View style={[styles.searchWrapper, { backgroundColor: theme.inputBackground }]}>
           <Text style={{ marginRight: 8 }}>🔍</Text>
@@ -272,7 +265,6 @@ export default function ReportsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 20 }} showsVerticalScrollIndicator={false}>
-        {/* Sales Card */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>💰 {t('salesSummary')}</Text>
           <View style={styles.row}><Text style={textSecondary}>Cash Sales:</Text><Text style={[styles.bold, textPrimary]}>₹{cashSales.toFixed(2)}</Text></View>
@@ -282,7 +274,6 @@ export default function ReportsScreen() {
           <View style={styles.row}><Text style={[styles.grandBold, { color: theme.primary }]}>{t('totalSales')}:</Text><Text style={[styles.grandBold, { color: theme.primary }]}>₹{totalSales.toFixed(2)}</Text></View>
         </View>
 
-        {/* Profit Card */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>📉 {t('profitAnalysis')}</Text>
           <View style={styles.row}><Text style={textSecondary}>Total Expenses:</Text><Text style={[styles.bold, textPrimary]}>₹{totalExpenses.toFixed(2)}</Text></View>
@@ -292,7 +283,6 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Close Day Card */}
         <View style={[cardStyle, { borderTopWidth: 5, borderTopColor: theme.primary }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>🏁 {t('dayEndOperations')}</Text>
           <Text style={[styles.infoText, textSecondary]}>{t('dayEndSubtitle')}</Text>
@@ -301,18 +291,15 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Backup & Restore Card */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>☁️ {t('backupSync')}</Text>
           <Text style={[styles.infoText, textSecondary]}>{t('backupSubtitle')}</Text>
           
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            {/* BACKUP BUTTON */}
             <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#4285F4', flex: 1 }]} onPress={handleCloudBackup}>
               <Text style={styles.cloudBtnText}>⬆ {t('backupDrive')}</Text>
             </TouchableOpacity>
             
-            {/* NEW: RESTORE BUTTON */}
             <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#34A853', flex: 1 }]} onPress={handleImportBackup}>
               <Text style={styles.cloudBtnText}>⬇ Import Backup</Text>
             </TouchableOpacity>
@@ -330,7 +317,6 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Expenses List */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>📑 {t('expenseList')}</Text>
           {filteredExpenses.length === 0 ? (
@@ -352,7 +338,6 @@ export default function ReportsScreen() {
         </View>
       </ScrollView>
 
-      {/* Expense Modal */}
       <Modal visible={expenseModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
