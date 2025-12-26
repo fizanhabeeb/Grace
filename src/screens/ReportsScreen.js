@@ -14,7 +14,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
-import { useTheme } from '../context/ThemeContext'; // Theme Hook
+import { useTheme } from '../context/ThemeContext';
 import { 
   loadOrderHistory, 
   loadExpenses, 
@@ -24,15 +24,16 @@ import {
   updateLastBackupTimestamp 
 } from '../utils/storage';
 import { restoreAllData } from '../utils/backup';
+import { exportSalesToLocalCsv } from '../utils/exportToCsv'; // <--- IMPORTED THIS
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy'; 
 
 export default function ReportsScreen() {
   const { t } = useLanguage();
-  const { theme, isDark } = useTheme(); // Use Theme
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const [period, setPeriod] = useState('today'); // 'today' | 'week' | 'month' | 'all'
+  const [period, setPeriod] = useState('today');
   const [orders, setOrders] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [searchText, setSearchText] = useState(''); 
@@ -56,13 +57,10 @@ export default function ReportsScreen() {
 
   const filterByPeriod = (dateStr) => {
     if (!dateStr) return false;
-    // Handle both ISO strings and localized date strings safely
     const today = new Date().toLocaleDateString('en-IN');
     
-    // Quick check for today string match
     if (period === 'today') return dateStr.includes(today) || dateStr === today;
     
-    // Parse date
     let d;
     if (dateStr.includes('/')) {
         const parts = dateStr.split('/');
@@ -71,7 +69,7 @@ export default function ReportsScreen() {
         d = new Date(dateStr);
     }
     
-    if (!d || isNaN(d.getTime())) return false; // Invalid date
+    if (!d || isNaN(d.getTime())) return false; 
 
     const now = new Date();
 
@@ -88,7 +86,6 @@ export default function ReportsScreen() {
 
   const filteredOrders = orders.filter((o) => filterByPeriod(o.date));
   
-  // Sales split for reconciliation
   const cashSales = filteredOrders.filter(o => o.paymentMode === 'Cash' || !o.paymentMode).reduce((s, o) => s + (o.grandTotal || 0), 0);
   const upiSales = filteredOrders.filter(o => o.paymentMode === 'UPI').reduce((s, o) => s + (o.grandTotal || 0), 0);
   const cardSales = filteredOrders.filter(o => o.paymentMode === 'Card').reduce((s, o) => s + (o.grandTotal || 0), 0);
@@ -138,12 +135,14 @@ export default function ReportsScreen() {
     }
   };
 
+  // --- UPDATED: AUTO EXPORT CSV ON CLOSE DAY ---
   const handleCloseDay = async () => {
     const today = new Date().toLocaleDateString('en-IN');
-    const todayOrders = orders.filter(o => o.date && o.date.includes(today));
+    // Filter orders for today
+    const todayOrders = orders.filter(o => o.date && (o.date.includes(today) || o.date === today));
     
     if (todayOrders.length === 0) {
-      Alert.alert(t('salesReport'), t('noOrdersYet'));
+      Alert.alert("No Sales", "No orders recorded for today yet.");
       return;
     }
 
@@ -152,15 +151,27 @@ export default function ReportsScreen() {
     const upi = todayOrders.filter(o => o.paymentMode === 'UPI').reduce((s, o) => s + (o.grandTotal || 0), 0);
 
     Alert.alert(
-      t('dayEndOperations'),
-      `${t('totalSales')}: ₹${total.toFixed(2)}\nCash: ₹${cash.toFixed(2)}\nUPI: ₹${upi.toFixed(2)}\n\n${t('backupSubtitle')}`,
+      "🏁 Close Day & Export",
+      `Total Sales: ₹${total.toFixed(2)}\nCash: ₹${cash.toFixed(2)}\nUPI: ₹${upi.toFixed(2)}\n\nThis will export today's bills to CSV and backup data.`,
       [
-        { text: t('cancel'), style: "cancel" },
+        { text: "Cancel", style: "cancel" },
         { 
-          text: t('backupDrive'), 
+          text: "Export & Close", 
           onPress: async () => {
-            await handleCloudBackup();
-            Alert.alert(t('success'), "Day Closed.");
+            // 1. Auto Export CSV for Today
+            await exportSalesToLocalCsv({ period: 'today', orders: todayOrders });
+            
+            // 2. Ask for Cloud Backup (JSON) after CSV is handled
+            setTimeout(async () => {
+                Alert.alert(
+                    "Cloud Backup", 
+                    "Do you want to save a full data backup to Google Drive?",
+                    [
+                        { text: "No", style: "cancel" },
+                        { text: "Yes, Backup", onPress: async () => await handleCloudBackup() }
+                    ]
+                );
+            }, 1000); // Small delay to prevent share sheet conflict
           } 
         }
       ]
@@ -171,13 +182,12 @@ export default function ReportsScreen() {
     const amountNum = parseFloat(expenseAmount);
     if (!expenseAmount || isNaN(amountNum)) {
       setIsAmountValid(false);
-      Alert.alert(t('error'), "Invalid Amount");
+      Alert.alert(t('error'), t('invalidAmountMessage'));
       return;
     }
     await addExpense({ category: expenseCategory || 'General', description: expenseDescription || '', amount: amountNum });
     setExpenseModalVisible(false);
     loadData();
-    // Reset form
     setExpenseCategory('');
     setExpenseDescription('');
     setExpenseAmount('');
@@ -190,7 +200,7 @@ export default function ReportsScreen() {
     ]);
   };
 
-  // Helper styles for Dark Mode
+  // Styles helpers
   const cardStyle = [styles.card, { backgroundColor: theme.card }];
   const textPrimary = { color: theme.text };
   const textSecondary = { color: theme.textSecondary };
@@ -263,7 +273,7 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* CLOSE DAY CARD */}
+        {/* CLOSE DAY CARD (Now with Auto Export) */}
         <View style={[cardStyle, { borderTopWidth: 5, borderTopColor: theme.primary }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>🏁 {t('dayEndOperations')}</Text>
           <Text style={[styles.infoText, textSecondary]}>{t('dayEndSubtitle')}</Text>

@@ -14,19 +14,19 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
-import { useTheme } from '../context/ThemeContext'; // Theme Hook
+import { useTheme } from '../context/ThemeContext'; 
 import { loadOrderHistory, clearOrderHistory, removeOrderFromHistory } from '../utils/storage';
 import { exportSalesToLocalCsv } from '../utils/exportToCsv';
 
 export default function HistoryScreen() {
   const { t } = useLanguage();
-  const { theme } = useTheme(); // Use Theme
+  const { theme } = useTheme(); 
   const insets = useSafeAreaInsets();
 
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [filterDate, setFilterDate] = useState('all'); // 'all' | 'today' | 'week'
+  const [filterDate, setFilterDate] = useState('all'); 
 
   const bottomPadding = Platform.OS === 'ios'
     ? insets.bottom + 80
@@ -43,21 +43,34 @@ export default function HistoryScreen() {
     setOrders(history);
   };
 
+  // --- SAFE DATE FORMATTER (The Fix) ---
+  const formatDisplayDate = (dateString) => {
+    if (!dateString) return '---';
+    const date = new Date(dateString);
+    // Check if the date object is valid
+    if (!isNaN(date.getTime())) {
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    }
+    // If invalid (likely old data stored as "26/12/2025"), return as is
+    return dateString;
+  };
+
   const getFilteredOrders = () => {
-    const todayStr = new Date().toLocaleDateString('en-IN'); // dd/mm/yyyy format usually
+    const todayStr = new Date().toLocaleDateString('en-IN'); 
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
     switch (filterDate) {
       case 'today':
-        return orders.filter((order) => order.date && order.date.includes(todayStr));
+        return orders.filter((order) => {
+            const dStr = order.date || '';
+            return dStr.includes(todayStr) || dStr === todayStr;
+        });
       case 'week':
         return orders.filter((order) => {
           if (!order.date) return false;
-          // Assuming date is stored as ISO string in updated BillScreen, or localized string.
-          // Fallback parsing logic:
-          const orderDate = new Date(order.date);
-          return orderDate >= weekAgo;
+          const d = new Date(order.date);
+          return !isNaN(d.getTime()) && d >= weekAgo;
         });
       default:
         return orders;
@@ -71,7 +84,7 @@ export default function HistoryScreen() {
   const handleDeleteBill = (orderId, billNumber) => {
     Alert.alert(
       t('deleteBill') || 'Delete Bill',
-      `${t('deleteConfirm') || 'Are you sure you want to delete bill'} #${billNumber}?`,
+      `${t('deleteConfirm') || 'Delete'} #${billNumber}?`,
       [
         { text: t('cancel'), style: 'cancel' },
         {
@@ -136,9 +149,8 @@ export default function HistoryScreen() {
       </View>
       <View style={styles.orderDetails}>
         <Text style={[styles.orderDate, { color: theme.textSecondary }]}>
-            📅 {new Date(item.date).toLocaleDateString()}
+            📅 {formatDisplayDate(item.date)}
         </Text>
-        {item.time && <Text style={[styles.orderTime, { color: theme.textSecondary }]}>🕐 {item.time}</Text>}
       </View>
       <View style={styles.orderMeta}>
         <Text style={[styles.orderItems, { color: theme.textSecondary }]}>
@@ -240,7 +252,10 @@ export default function HistoryScreen() {
                 </View>
                 
                 <View style={[styles.modalInfo, { backgroundColor: theme.inputBackground }]}>
-                  <Text style={[styles.modalInfoText, { color: theme.text }]}>📅 {new Date(selectedOrder.date).toLocaleString()}</Text>
+                  {/* FIX: Use formatDisplayDate here to prevent Invalid Date error */}
+                  <Text style={[styles.modalInfoText, { color: theme.text }]}>📅 {formatDisplayDate(selectedOrder.date)}</Text>
+                  
+                  {selectedOrder.time && <Text style={[styles.modalInfoText, { color: theme.text }]}>🕐 {selectedOrder.time}</Text>}
                   {selectedOrder.tableNumber && <Text style={[styles.modalInfoText, { color: theme.text }]}>🪑 {t('table')}: {selectedOrder.tableNumber}</Text>}
                   {selectedOrder.customerName && <Text style={[styles.modalInfoText, { color: theme.text }]}>👤 {selectedOrder.customerName}</Text>}
                 </View>
@@ -302,7 +317,6 @@ const styles = StyleSheet.create({
   orderAmount: { fontSize: 18, fontWeight: 'bold' },
   orderDetails: { flexDirection: 'row', marginBottom: 6 },
   orderDate: { fontSize: 13, marginRight: 15 },
-  orderTime: { fontSize: 13 },
   orderMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   orderItems: { fontSize: 13 },
   emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 20 },
