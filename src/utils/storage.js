@@ -386,27 +386,43 @@ export const createBackupObject = async () => {
   }
 };
 
-export const restoreFromBackupObject = async (backup) => {
+// --- NEW FUNCTION: RESTORE FULL BACKUP (FIXED KEYS) ---
+export const restoreFullBackup = async (backupData) => {
   try {
-    if (!backup || typeof backup !== 'object') {
-      throw new Error('Invalid backup file');
+    const pairs = [];
+    
+    // 1. Restore Menu
+    if (backupData.menu) {
+        pairs.push([MENU_KEY, JSON.stringify(backupData.menu)]);
     }
-    const menu = Array.isArray(backup.menu) ? backup.menu : getDefaultMenu();
-    const orders = Array.isArray(backup.orders) ? backup.orders : [];
-    const expenses = Array.isArray(backup.expenses) ? backup.expenses : [];
-    const settings = backup.settings || getDefaultSettings();
 
-    await AsyncStorage.multiSet([
-      [MENU_KEY, JSON.stringify(menu)],
-      [ORDERS_KEY, JSON.stringify(orders)],
-      [EXPENSES_KEY, JSON.stringify(expenses)],
-      [SETTINGS_KEY, JSON.stringify(settings)],
-    ]);
+    // 2. Restore Orders (Check both 'orders' and 'history' property for compatibility)
+    if (backupData.orders) {
+        pairs.push([ORDERS_KEY, JSON.stringify(backupData.orders)]);
+    } else if (backupData.history) {
+        pairs.push([ORDERS_KEY, JSON.stringify(backupData.history)]);
+    }
 
-    await AsyncStorage.removeItem(CURRENT_ORDER_KEY);
-    return true;
+    // 3. Restore Expenses
+    if (backupData.expenses) {
+        pairs.push([EXPENSES_KEY, JSON.stringify(backupData.expenses)]);
+    }
+
+    // 4. Restore Settings
+    if (backupData.settings) {
+        pairs.push([SETTINGS_KEY, JSON.stringify(backupData.settings)]);
+    }
+
+    if (pairs.length > 0) {
+      await AsyncStorage.multiSet(pairs);
+      // Optional: Clear any temporary current order to prevent conflicts
+      await AsyncStorage.removeItem(CURRENT_ORDER_KEY);
+      return true;
+    }
+    return false;
   } catch (error) {
-    throw error;
+    console.error("Restore Error:", error);
+    return false;
   }
 };
 

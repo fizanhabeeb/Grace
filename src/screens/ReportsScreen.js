@@ -9,7 +9,6 @@ import {
   TextInput,
   Modal,
   Alert,
-  Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,18 +20,21 @@ import {
   addExpense, 
   removeExpense, 
   createBackupObject,
-  updateLastBackupTimestamp 
+  updateLastBackupTimestamp,
+  restoreFullBackup // <--- IMPORT THIS
 } from '../utils/storage';
-import { restoreAllData } from '../utils/backup';
+import { restoreAllData } from '../utils/backup'; 
 import { exportSalesToLocalCsv } from '../utils/exportToCsv';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system/legacy'; 
-// --- IMPORT NEW HELPERS ---
-import { safeDate, isToday, formatDateForDisplay } from '../utils/dateHelpers';
+import * as FileSystem from 'expo-file-system';
+import * as DocumentPicker from 'expo-document-picker'; // <--- IMPORT THIS
+
+// --- GLOBAL STYLES (If you created them, otherwise keep your local styles) ---
+// import { createGlobalStyles } from '../styles/globalStyles';
 
 export default function ReportsScreen() {
   const { t } = useLanguage();
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [period, setPeriod] = useState('today');
@@ -60,31 +62,29 @@ export default function ReportsScreen() {
     setExpenses(exp || []);
   };
 
-  // --- UPDATED FILTER LOGIC USING SAFE DATE ---
   const filterByPeriod = (dateStr) => {
     if (!dateStr) return false;
+    const today = new Date().toLocaleDateString('en-IN');
+    if (period === 'today') return dateStr.includes(today) || dateStr === today;
     
-    // Use safeDate to convert mixed formats (text or ISO) to a Date Object
-    const dateObj = safeDate(dateStr);
-    const now = new Date();
+    // Simple date parsing for filters
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false; 
 
-    if (period === 'today') {
-        return isToday(dateObj);
-    }
+    const now = new Date();
     if (period === 'week') {
-        const weekAgo = new Date();
-        weekAgo.setDate(now.getDate() - 7);
-        return dateObj >= weekAgo;
+      const weekAgo = new Date();
+      weekAgo.setDate(now.getDate() - 7);
+      return d >= weekAgo;
     }
     if (period === 'month') {
-        return dateObj.getMonth() === now.getMonth() && dateObj.getFullYear() === now.getFullYear();
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     }
-    // 'all'
     return true;
   };
 
   const filteredOrders = orders.filter((o) => filterByPeriod(o.date));
-  
+  const totalSales = round(filteredOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0));
   const cashSales = round(filteredOrders.filter(o => o.paymentMode === 'Cash' || !o.paymentMode).reduce((s, o) => s + (o.grandTotal || 0), 0));
   const upiSales = round(filteredOrders.filter(o => o.paymentMode === 'UPI').reduce((s, o) => s + (o.grandTotal || 0), 0));
   const cardSales = round(filteredOrders.filter(o => o.paymentMode === 'Card').reduce((s, o) => s + (o.grandTotal || 0), 0));
@@ -98,11 +98,10 @@ export default function ReportsScreen() {
     });
   }, [expenses, period, searchText]);
 
-  const totalSales = round(filteredOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0));
   const totalExpenses = round(filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0));
   const profit = round(totalSales - totalExpenses);
 
-  // Cloud Backup logic
+  // --- 1. CLOUD BACKUP (EXPORT) ---
   const handleCloudBackup = async () => {
     try {
       const backupData = await createBackupObject();
@@ -120,7 +119,7 @@ export default function ReportsScreen() {
       if (canShare) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'application/json',
-          dialogTitle: 'Backup Hotel Grace Data',
+          dialogTitle: 'Save Backup File',
           UTI: 'public.json'
         });
         await updateLastBackupTimestamp();
@@ -132,22 +131,71 @@ export default function ReportsScreen() {
     }
   };
 
+  // --- 2. IMPORT BACKUP (RESTORE) ---
+  const handleImportBackup = async () => {
+    try {
+      Alert.alert(
+        "Restore Data", 
+        "This will OVERWRITE your current data with the backup file. Are you sure?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Pick File", onPress: async () => {
+              // 1. Pick the file
+              const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/json', // Only JSON files
+                copyToCacheDirectory: true
+              });
+
+              if (result.canceled) return;
+
+              // 2. Read the file
+              const fileUri = result.assets ? result.assets[0].uri : result.uri;
+              const fileContent = await FileSystem.readAsStringAsync(fileUri);
+              
+              // 3. Parse and Restore
+              try {
+                const parsedData = JSON.parse(fileContent);
+                
+                // Basic validation
+                if (!parsedData.history && !parsedData.menu) {
+                  Alert.alert("Invalid File", "This does not look like a valid backup file.");
+                  return;
+                }
+
+                const success = await restoreFullBackup(parsedData);
+                if (success) {
+                  await loadData(); // Reload screen
+                  Alert.alert("Success", "Data restored successfully!");
+                } else {
+                  Alert.alert("Error", "Failed to restore data.");
+                }
+              } catch (parseError) {
+                Alert.alert("Error", "Corrupted backup file.");
+              }
+          }}
+        ]
+      );
+    } catch (err) {
+      Alert.alert("Error", "Could not pick file.");
+    }
+  };
+
   const handleCloseDay = async () => {
-    // Filter today's orders using safe helper
-    const todayOrders = orders.filter(o => isToday(o.date));
+    // ... (Keep existing logic)
+    const today = new Date().toLocaleDateString('en-IN');
+    const todayOrders = orders.filter(o => o.date && (o.date.includes(today) || o.date === today));
     
     if (todayOrders.length === 0) {
       Alert.alert("No Sales", "No orders recorded for today yet.");
       return;
     }
-
     const total = round(todayOrders.reduce((s, o) => s + (o.grandTotal || 0), 0));
     const cash = round(todayOrders.filter(o => o.paymentMode === 'Cash' || !o.paymentMode).reduce((s, o) => s + (o.grandTotal || 0), 0));
     const upi = round(todayOrders.filter(o => o.paymentMode === 'UPI').reduce((s, o) => s + (o.grandTotal || 0), 0));
 
     Alert.alert(
       "🏁 Close Day & Export",
-      `Total Sales: ₹${total.toFixed(2)}\nCash: ₹${cash.toFixed(2)}\nUPI: ₹${upi.toFixed(2)}\n\nThis will export today's bills to CSV and backup data.`,
+      `Total Sales: ₹${total.toFixed(2)}\nCash: ₹${cash.toFixed(2)}\nUPI: ₹${upi.toFixed(2)}`,
       [
         { text: "Cancel", style: "cancel" },
         { 
@@ -155,9 +203,9 @@ export default function ReportsScreen() {
           onPress: async () => {
             await exportSalesToLocalCsv({ period: 'today', orders: todayOrders });
             setTimeout(async () => {
-                Alert.alert("Cloud Backup", "Do you want to save a full data backup to Google Drive?", [
+                Alert.alert("Cloud Backup", "Save full data backup to Drive?", [
                         { text: "No", style: "cancel" },
-                        { text: "Yes, Backup", onPress: async () => await handleCloudBackup() }
+                        { text: "Yes, Backup", onPress: handleCloudBackup }
                 ]);
             }, 1000); 
           } 
@@ -166,25 +214,14 @@ export default function ReportsScreen() {
     );
   };
 
+  // ... (Keep Expenses Logic: handleSaveExpense, handleDeleteExpense) ...
   const handleSaveExpense = async () => {
     const amountNum = parseFloat(expenseAmount);
-    if (!expenseAmount || isNaN(amountNum)) {
-      setIsAmountValid(false);
-      Alert.alert(t('error'), t('invalidAmountMessage'));
-      return;
-    }
-    // Save current time as ISO String
-    await addExpense({ 
-        category: expenseCategory || 'General', 
-        description: expenseDescription || '', 
-        amount: round(amountNum),
-        date: new Date().toISOString() // Ensure ISO
-    });
+    if (!expenseAmount || isNaN(amountNum)) { setIsAmountValid(false); return; }
+    await addExpense({ category: expenseCategory || 'General', description: expenseDescription || '', amount: round(amountNum), date: new Date().toLocaleDateString('en-IN') });
     setExpenseModalVisible(false);
     loadData();
-    setExpenseCategory('');
-    setExpenseDescription('');
-    setExpenseAmount('');
+    setExpenseCategory(''); setExpenseDescription(''); setExpenseAmount('');
   };
 
   const handleDeleteExpense = (id) => {
@@ -194,6 +231,7 @@ export default function ReportsScreen() {
     ]);
   };
 
+  // Helper styles
   const cardStyle = [styles.card, { backgroundColor: theme.card }];
   const textPrimary = { color: theme.text };
   const textSecondary = { color: theme.textSecondary };
@@ -222,10 +260,7 @@ export default function ReportsScreen() {
           {['today', 'week', 'month', 'all'].map((p) => (
             <TouchableOpacity
               key={p}
-              style={[
-                styles.periodBtn, 
-                period === p ? { backgroundColor: theme.primary } : { backgroundColor: theme.inputBackground }
-              ]}
+              style={[styles.periodBtn, period === p ? { backgroundColor: theme.primary } : { backgroundColor: theme.inputBackground }]}
               onPress={() => setPeriod(p)}
             >
               <Text style={[styles.periodText, period === p ? { color: '#fff' } : { color: theme.text }]}>
@@ -237,33 +272,27 @@ export default function ReportsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 20 }} showsVerticalScrollIndicator={false}>
-        {/* Sales */}
+        {/* Sales Card */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>💰 {t('salesSummary')}</Text>
           <View style={styles.row}><Text style={textSecondary}>Cash Sales:</Text><Text style={[styles.bold, textPrimary]}>₹{cashSales.toFixed(2)}</Text></View>
           <View style={styles.row}><Text style={textSecondary}>UPI Sales:</Text><Text style={[styles.bold, textPrimary]}>₹{upiSales.toFixed(2)}</Text></View>
           <View style={styles.row}><Text style={textSecondary}>Card Sales:</Text><Text style={[styles.bold, textPrimary]}>₹{cardSales.toFixed(2)}</Text></View>
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <View style={styles.row}>
-            <Text style={[styles.grandBold, { color: theme.primary }]}>{t('totalSales')}:</Text>
-            <Text style={[styles.grandBold, { color: theme.primary }]}>₹{totalSales.toFixed(2)}</Text>
-          </View>
+          <View style={styles.row}><Text style={[styles.grandBold, { color: theme.primary }]}>{t('totalSales')}:</Text><Text style={[styles.grandBold, { color: theme.primary }]}>₹{totalSales.toFixed(2)}</Text></View>
         </View>
 
-        {/* Profit */}
+        {/* Profit Card */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>📉 {t('profitAnalysis')}</Text>
           <View style={styles.row}><Text style={textSecondary}>Total Expenses:</Text><Text style={[styles.bold, textPrimary]}>₹{totalExpenses.toFixed(2)}</Text></View>
-          <View style={styles.row}>
-            <Text style={textSecondary}>Net Profit:</Text>
-            <Text style={[styles.bold, { color: profit >= 0 ? '#4CAF50' : '#ff4444' }]}>₹{profit.toFixed(2)}</Text>
-          </View>
+          <View style={styles.row}><Text style={textSecondary}>Net Profit:</Text><Text style={[styles.bold, { color: profit >= 0 ? '#4CAF50' : '#ff4444' }]}>₹{profit.toFixed(2)}</Text></View>
           <TouchableOpacity style={[styles.addBtn, { backgroundColor: '#FF9800' }]} onPress={() => setExpenseModalVisible(true)}>
             <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ {t('addExpenseLabel')}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Close Day */}
+        {/* Close Day Card */}
         <View style={[cardStyle, { borderTopWidth: 5, borderTopColor: theme.primary }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>🏁 {t('dayEndOperations')}</Text>
           <Text style={[styles.infoText, textSecondary]}>{t('dayEndSubtitle')}</Text>
@@ -272,7 +301,36 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Expenses */}
+        {/* Backup & Restore Card */}
+        <View style={cardStyle}>
+          <Text style={[styles.cardTitle, { color: theme.primary }]}>☁️ {t('backupSync')}</Text>
+          <Text style={[styles.infoText, textSecondary]}>{t('backupSubtitle')}</Text>
+          
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {/* BACKUP BUTTON */}
+            <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#4285F4', flex: 1 }]} onPress={handleCloudBackup}>
+              <Text style={styles.cloudBtnText}>⬆ {t('backupDrive')}</Text>
+            </TouchableOpacity>
+            
+            {/* NEW: RESTORE BUTTON */}
+            <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#34A853', flex: 1 }]} onPress={handleImportBackup}>
+              <Text style={styles.cloudBtnText}>⬇ Import Backup</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          
+          <TouchableOpacity style={[styles.backupBtn, {backgroundColor: '#FF7043'}]} onPress={() => {
+            Alert.alert(t('restoreConfirmTitle'), t('restoreConfirmMessage'), [
+              { text: t('cancel'), style: 'cancel' },
+              { text: t('restoreDataLabel'), style: 'destructive', onPress: async () => { await restoreAllData(); loadData(); } },
+            ]);
+          }}>
+            <Text style={{ color: '#fff', fontWeight: 'bold' }}>⏪ {t('restoreDataLabel')} (Reset)</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Expenses List */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>📑 {t('expenseList')}</Text>
           {filteredExpenses.length === 0 ? (
@@ -286,31 +344,11 @@ export default function ReportsScreen() {
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={[styles.bold, textPrimary]}>₹{exp.amount.toFixed(2)}</Text>
-                  {/* DISPLAY SAFE DATE */}
-                  <Text style={[styles.small, textSecondary]}>{formatDateForDisplay(exp.date)}</Text>
-                  <Text style={styles.deleteHint}>(Hold to delete)</Text>
+                  <Text style={[styles.small, textSecondary]}>{exp.date}</Text>
                 </View>
               </TouchableOpacity>
             ))
           )}
-        </View>
-
-        {/* Backup */}
-        <View style={cardStyle}>
-          <Text style={[styles.cardTitle, { color: theme.primary }]}>☁️ {t('backupSync')}</Text>
-          <Text style={[styles.infoText, textSecondary]}>{t('backupSubtitle')}</Text>
-          <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#4285F4' }]} onPress={handleCloudBackup}>
-            <Text style={styles.cloudBtnText}>{t('backupDrive')}</Text>
-          </TouchableOpacity>
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <TouchableOpacity style={[styles.backupBtn, {backgroundColor: '#FF7043'}]} onPress={() => {
-            Alert.alert(t('restoreConfirmTitle'), t('restoreConfirmMessage'), [
-              { text: t('cancel'), style: 'cancel' },
-              { text: t('restoreDataLabel'), style: 'destructive', onPress: async () => { await restoreAllData(); loadData(); } },
-            ]);
-          }}>
-            <Text style={{ color: '#fff', fontWeight: 'bold' }}>⏪ {t('restoreDataLabel')}</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -358,7 +396,7 @@ const styles = StyleSheet.create({
   addBtn: { padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 15 },
   expenseItem: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1 },
   cloudBtn: { padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
-  cloudBtnText: { color: '#fff', fontWeight: 'bold' },
+  cloudBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
   backupBtn: { padding: 12, borderRadius: 10, alignItems: 'center' },
   emptyText: { fontStyle: 'italic', textAlign: 'center', paddingVertical: 10 },
   deleteHint: { fontSize: 10, color: '#ff4444', textAlign: 'right', marginTop: 2 },
