@@ -26,7 +26,9 @@ import {
 import { restoreAllData } from '../utils/backup'; 
 import { exportSalesToLocalCsv } from '../utils/exportToCsv';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+
+// --- FIX 1: USE LEGACY IMPORT (Required by new Expo SDKs) ---
+import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 
 export default function ReportsScreen() {
@@ -64,6 +66,7 @@ export default function ReportsScreen() {
     const today = new Date().toLocaleDateString('en-IN');
     if (period === 'today') return dateStr.includes(today) || dateStr === today;
     
+    // Simple date parsing for filters
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return false; 
 
@@ -106,10 +109,10 @@ export default function ReportsScreen() {
         return;
       }
       const fileName = `Grace_POS_Backup_${new Date().getTime()}.json`;
-      const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`; // Use documentDirectory instead of cache for safety
       const jsonString = JSON.stringify(backupData);
       
-      // --- FIX: Use string 'utf8' instead of FileSystem.EncodingType.UTF8 ---
+      // --- FIX 2: Use string 'utf8' directly (Avoids constant crash) ---
       await FileSystem.writeAsStringAsync(fileUri, jsonString, { encoding: 'utf8' });
 
       const canShare = await Sharing.isAvailableAsync();
@@ -138,6 +141,7 @@ export default function ReportsScreen() {
         [
           { text: "Cancel", style: "cancel" },
           { text: "Pick File", onPress: async () => {
+              // 1. Pick the file
               const result = await DocumentPicker.getDocumentAsync({
                 type: 'application/json', 
                 copyToCacheDirectory: true
@@ -145,14 +149,17 @@ export default function ReportsScreen() {
 
               if (result.canceled) return;
 
+              // 2. Read the file
               const fileUri = result.assets ? result.assets[0].uri : result.uri;
               
-              // Reading usually doesn't need explicit encoding, but we can be safe
+              // --- FIX 2: Use string 'utf8' directly ---
               const fileContent = await FileSystem.readAsStringAsync(fileUri, { encoding: 'utf8' });
               
+              // 3. Parse and Restore
               try {
                 const parsedData = JSON.parse(fileContent);
                 
+                // Basic validation
                 if (!parsedData.history && !parsedData.menu && !parsedData.orders) {
                   Alert.alert("Invalid File", "This does not look like a valid backup file.");
                   return;
@@ -160,7 +167,7 @@ export default function ReportsScreen() {
 
                 const success = await restoreFullBackup(parsedData);
                 if (success) {
-                  await loadData(); 
+                  await loadData(); // Reload screen
                   Alert.alert("Success", "Data restored successfully!");
                 } else {
                   Alert.alert("Error", "Failed to restore data.");
@@ -226,6 +233,7 @@ export default function ReportsScreen() {
     ]);
   };
 
+  // Helper styles
   const cardStyle = [styles.card, { backgroundColor: theme.card }];
   const textPrimary = { color: theme.text };
   const textSecondary = { color: theme.textSecondary };
@@ -233,6 +241,7 @@ export default function ReportsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Header */}
       <View style={[styles.headerContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
         <View style={[styles.searchWrapper, { backgroundColor: theme.inputBackground }]}>
           <Text style={{ marginRight: 8 }}>🔍</Text>
@@ -265,6 +274,7 @@ export default function ReportsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 20 }} showsVerticalScrollIndicator={false}>
+        {/* Sales Card */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>💰 {t('salesSummary')}</Text>
           <View style={styles.row}><Text style={textSecondary}>Cash Sales:</Text><Text style={[styles.bold, textPrimary]}>₹{cashSales.toFixed(2)}</Text></View>
@@ -274,6 +284,7 @@ export default function ReportsScreen() {
           <View style={styles.row}><Text style={[styles.grandBold, { color: theme.primary }]}>{t('totalSales')}:</Text><Text style={[styles.grandBold, { color: theme.primary }]}>₹{totalSales.toFixed(2)}</Text></View>
         </View>
 
+        {/* Profit Card */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>📉 {t('profitAnalysis')}</Text>
           <View style={styles.row}><Text style={textSecondary}>Total Expenses:</Text><Text style={[styles.bold, textPrimary]}>₹{totalExpenses.toFixed(2)}</Text></View>
@@ -283,6 +294,7 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Close Day Card */}
         <View style={[cardStyle, { borderTopWidth: 5, borderTopColor: theme.primary }]}>
           <Text style={[styles.cardTitle, { color: theme.text }]}>🏁 {t('dayEndOperations')}</Text>
           <Text style={[styles.infoText, textSecondary]}>{t('dayEndSubtitle')}</Text>
@@ -291,15 +303,18 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Backup & Restore Card */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>☁️ {t('backupSync')}</Text>
           <Text style={[styles.infoText, textSecondary]}>{t('backupSubtitle')}</Text>
           
           <View style={{ flexDirection: 'row', gap: 10 }}>
+            {/* BACKUP BUTTON */}
             <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#4285F4', flex: 1 }]} onPress={handleCloudBackup}>
               <Text style={styles.cloudBtnText}>⬆ {t('backupDrive')}</Text>
             </TouchableOpacity>
             
+            {/* RESTORE BUTTON */}
             <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#34A853', flex: 1 }]} onPress={handleImportBackup}>
               <Text style={styles.cloudBtnText}>⬇ Import Backup</Text>
             </TouchableOpacity>
@@ -317,6 +332,7 @@ export default function ReportsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Expenses List */}
         <View style={cardStyle}>
           <Text style={[styles.cardTitle, { color: theme.primary }]}>📑 {t('expenseList')}</Text>
           {filteredExpenses.length === 0 ? (
@@ -338,6 +354,7 @@ export default function ReportsScreen() {
         </View>
       </ScrollView>
 
+      {/* Expense Modal */}
       <Modal visible={expenseModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
