@@ -24,7 +24,9 @@ export default function OrderScreen({ navigation }) {
   const { t, getCategoryName } = useLanguage();
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { isLandscape, numColumns, cardWidth } = useOrientation();
+  
+  // --- UPDATED: Destructured isTablet here ---
+  const { isLandscape, numColumns, cardWidth, isTablet } = useOrientation();
   
   const [menuItems, setMenuItems] = useState([]);
   const [orderItems, setOrderItems] = useState([]);
@@ -154,10 +156,22 @@ export default function OrderScreen({ navigation }) {
             </View>
           )}
         </View>
+        
+        {/* --- UPDATED: Text size increases if isTablet is true --- */}
         <View style={styles.cardInfo}>
-          <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
-          <Text style={[styles.cardPrice, { color: theme.primary }]}>₹{item.price.toFixed(0)}</Text>
+          <Text 
+            style={[styles.cardName, { color: theme.text, fontSize: isTablet ? 16 : 13 }]} 
+            numberOfLines={1}
+          >
+            {item.name}
+          </Text>
+          <Text 
+            style={[styles.cardPrice, { color: theme.primary, fontSize: isTablet ? 16 : 14 }]}
+          >
+            ₹{item.price.toFixed(0)}
+          </Text>
         </View>
+
       </TouchableOpacity>
     );
   };
