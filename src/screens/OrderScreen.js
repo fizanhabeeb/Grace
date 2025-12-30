@@ -1,46 +1,32 @@
 // src/screens/OrderScreen.js
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-  Modal,
-  Platform,
-  TextInput,
-} from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, Image, Modal, Platform, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
-import { loadMenu, loadCurrentOrder, saveCurrentOrder } from '../utils/storage';
+import { loadMenu, saveActiveTableOrder, getActiveTableOrder } from '../utils/storage'; // UPDATED IMPORTS
 
-export default function OrderScreen({ navigation }) {
+export default function OrderScreen({ navigation, route }) {
   const { t, getCategoryName } = useLanguage();
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  
-  // --- UPDATED: Destructured isTablet here ---
   const { isLandscape, numColumns, cardWidth, isTablet } = useOrientation();
+
+  // GET TABLE NUMBER FROM PARAMS (Default to 'Counter' if missing)
+  const { tableNo } = route.params || { tableNo: 'Counter' };
   
   const [menuItems, setMenuItems] = useState([]);
   const [orderItems, setOrderItems] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  
-  // --- DEBOUNCE STATE ---
-  const [searchText, setSearchText] = useState(''); // Immediate input
-  const [debouncedSearchText, setDebouncedSearchText] = useState(''); // Delayed filter
-
+  const [searchText, setSearchText] = useState('');
+  const [debouncedSearchText, setDebouncedSearchText] = useState('');
   const [variantModalVisible, setVariantModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
   const categories = ['All', 'Breakfast', 'Rice', 'Curry', 'Snacks', 'Beverages'];
-
   const safeBottom = Platform.OS === 'ios' ? insets.bottom : 10;
   const orderBarHeight = isLandscape ? 120 : 180;
   const bottomPadding = orderItems.length > 0 ? orderBarHeight + safeBottom + 20 : 20;
@@ -48,32 +34,25 @@ export default function OrderScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [])
+    }, [tableNo]) // Re-load if table changes
   );
 
   const loadData = async () => {
     const menu = await loadMenu();
     setMenuItems(menu);
-    const currentOrder = await loadCurrentOrder();
+    // Load Specific Table Order
+    const currentOrder = await getActiveTableOrder(tableNo);
     setOrderItems(currentOrder);
   };
 
-  // --- DEBOUNCE EFFECT (Performance Fix) ---
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchText(searchText);
-    }, 300); // Wait 300ms after typing stops
-
-    return () => {
-      clearTimeout(handler);
-    };
+    const handler = setTimeout(() => { setDebouncedSearchText(searchText); }, 300);
+    return () => clearTimeout(handler);
   }, [searchText]);
 
-  // --- FILTER LOGIC (Uses debounced text) ---
   const filteredMenu = useMemo(() => {
     return menuItems.filter(item => {
       const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-      // Filter using the DEBOUNCED text, not the immediate text
       const matchesSearch = item.name.toLowerCase().includes(debouncedSearchText.toLowerCase());
       return matchesCategory && matchesSearch;
     });
@@ -108,7 +87,7 @@ export default function OrderScreen({ navigation }) {
       }];
     }
     setOrderItems(updatedOrder);
-    await saveCurrentOrder(updatedOrder);
+    await saveActiveTableOrder(tableNo, updatedOrder); // SAVE TO TABLE
     setVariantModalVisible(false);
   };
 
@@ -120,7 +99,7 @@ export default function OrderScreen({ navigation }) {
         ? orderItems.map((item, index) => index === existingIndex ? { ...item, quantity: item.quantity - 1 } : item)
         : orderItems.filter((_, index) => index !== existingIndex);
       setOrderItems(updatedOrder);
-      await saveCurrentOrder(updatedOrder);
+      await saveActiveTableOrder(tableNo, updatedOrder); // SAVE TO TABLE
     }
   };
 
@@ -156,41 +135,33 @@ export default function OrderScreen({ navigation }) {
             </View>
           )}
         </View>
-        
-        {/* --- UPDATED: Text size increases if isTablet is true --- */}
         <View style={styles.cardInfo}>
-          <Text 
-            style={[styles.cardName, { color: theme.text, fontSize: isTablet ? 16 : 13 }]} 
-            numberOfLines={1}
-          >
-            {item.name}
-          </Text>
-          <Text 
-            style={[styles.cardPrice, { color: theme.primary, fontSize: isTablet ? 16 : 14 }]}
-          >
-            ₹{item.price.toFixed(0)}
-          </Text>
+          <Text style={[styles.cardName, { color: theme.text, fontSize: isTablet ? 16 : 13 }]} numberOfLines={1}>{item.name}</Text>
+          <Text style={[styles.cardPrice, { color: theme.primary, fontSize: isTablet ? 16 : 14 }]}>₹{item.price.toFixed(0)}</Text>
         </View>
-
       </TouchableOpacity>
     );
   };
 
-  // Helper styles for Dark Mode
-  const inputStyle = [styles.searchInput, { color: theme.text }];
-
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Search Bar Section */}
+      
+      {/* Search Bar with Table Info */}
       <View style={[styles.searchBarContainer, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+           <Text style={{ color: theme.primary, fontWeight: 'bold', fontSize: 16 }}>Table: {tableNo}</Text>
+           <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 5 }}>
+             <Text style={{ color: theme.textSecondary }}>Close</Text>
+           </TouchableOpacity>
+        </View>
         <View style={[styles.searchWrapper, { backgroundColor: theme.inputBackground }]}>
           <Ionicons name="search" size={20} color={theme.textSecondary} style={{ marginRight: 8 }} />
           <TextInput
-            style={inputStyle}
+            style={[styles.searchInput, { color: theme.text }]}
             placeholder={t('enterItemName')}
             placeholderTextColor={theme.textSecondary}
             value={searchText}
-            onChangeText={setSearchText} // Updates immediate state, debounce handles the rest
+            onChangeText={setSearchText} 
           />
           {searchText !== '' && (
             <TouchableOpacity onPress={() => setSearchText('')}>
@@ -206,20 +177,10 @@ export default function OrderScreen({ navigation }) {
           {categories.map(category => (
             <TouchableOpacity
               key={category}
-              style={[
-                styles.categoryButton, 
-                selectedCategory === category 
-                  ? { backgroundColor: theme.primary } 
-                  : { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }
-              ]}
+              style={[styles.categoryButton, selectedCategory === category ? { backgroundColor: theme.primary } : { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }]}
               onPress={() => setSelectedCategory(category)}
             >
-              <Text style={[
-                styles.categoryText, 
-                { color: selectedCategory === category ? '#fff' : theme.text }
-              ]}>
-                {getCategoryName(category)}
-              </Text>
+              <Text style={[styles.categoryText, { color: selectedCategory === category ? '#fff' : theme.text }]}>{getCategoryName(category)}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -234,45 +195,33 @@ export default function OrderScreen({ navigation }) {
         key={numColumns} 
         contentContainerStyle={{ paddingBottom: bottomPadding }}
         showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-            {debouncedSearchText ? "No matches found" : t('noItemsAvailable')}
-          </Text>
-        }
+        ListEmptyComponent={<Text style={[styles.emptyText, { color: theme.textSecondary }]}>{debouncedSearchText ? "No matches found" : t('noItemsAvailable')}</Text>}
       />
 
-      {/* Cart Summary Bar (Horizontal Scroll) */}
+      {/* Cart Summary Bar */}
       {orderItems.length > 0 && (
-        <View style={[styles.orderBar, { 
-            paddingBottom: safeBottom + 10, 
-            backgroundColor: theme.card, 
-            borderColor: theme.border 
-        }]}>
+        <View style={[styles.orderBar, { paddingBottom: safeBottom + 10, backgroundColor: theme.card, borderColor: theme.border }]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
             {orderItems.map(item => (
               <View key={item.orderId} style={[styles.cartItem, { backgroundColor: theme.inputBackground }]}>
                 <Text style={[styles.cartItemName, { color: theme.text }]}>{item.name} x{item.quantity}</Text>
                 <View style={{ flexDirection: 'row' }}>
-                  <TouchableOpacity onPress={() => removeFromOrder(item.orderId)} style={[styles.smallBtn, { backgroundColor: theme.card }]}>
-                    <Text style={{ color: theme.text }}>−</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => addToOrder({ id: item.id, image: item.image }, item.name, item.price)} style={[styles.smallBtn, { backgroundColor: theme.card }]}>
-                    <Text style={{ color: theme.text }}>+</Text>
-                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => removeFromOrder(item.orderId)} style={[styles.smallBtn, { backgroundColor: theme.card }]}><Text style={{ color: theme.text }}>−</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => addToOrder({ id: item.id, image: item.image }, item.name, item.price)} style={[styles.smallBtn, { backgroundColor: theme.card }]}><Text style={{ color: theme.text }}>+</Text></TouchableOpacity>
                 </View>
               </View>
             ))}
           </ScrollView>
           <TouchableOpacity 
             style={[styles.billButton, { backgroundColor: theme.primary }]} 
-            onPress={() => navigation.navigate('Bill')}
+            onPress={() => navigation.navigate('Bill', { tableNo: tableNo })} // PASS TABLE NO TO BILL
           >
             <Text style={styles.billButtonText}>{t('viewBillArrow')} (₹{orderItems.reduce((s, i) => s + (i.price * i.quantity), 0).toFixed(2)})</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Variant Modal */}
+      {/* Variant Modal (Keep existing) */}
       <Modal visible={variantModalVisible} animationType="slide" transparent={true}>
           <View style={styles.variantModalOverlay}>
               <View style={[styles.variantModalContent, { backgroundColor: theme.card }]}>

@@ -6,7 +6,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Keys
 const MENU_KEY = 'hotel_grace_menu';
 const ORDERS_KEY = 'hotel_grace_orders';
-const CURRENT_ORDER_KEY = 'hotel_grace_current_order';
+const CURRENT_ORDER_KEY = 'hotel_grace_current_order'; // Legacy support
+const ACTIVE_ORDERS_KEY = 'hotel_grace_active_orders'; // NEW: For multiple tables
 const SETTINGS_KEY = 'hotel_grace_settings';
 const EXPENSES_KEY = 'hotel_grace_expenses';
 const LAST_BACKUP_KEY = 'hotel_grace_last_backup';
@@ -192,36 +193,78 @@ export const resetMenuToDefault = async () => {
   }
 };
 
-// ============ CURRENT ORDER ============
+// ============ NEW: ACTIVE ORDERS (MULTI-TABLE) ============
 
-export const saveCurrentOrder = async (orderItems) => {
+// Get all active tables: { "1": [items], "5": [items] }
+export const getAllActiveOrders = async () => {
   try {
-    await AsyncStorage.setItem(CURRENT_ORDER_KEY, JSON.stringify(orderItems));
+    const data = await AsyncStorage.getItem(ACTIVE_ORDERS_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch (error) {
+    return {};
+  }
+};
+
+// Save items for a specific table
+export const saveActiveTableOrder = async (tableNo, items) => {
+  try {
+    const allOrders = await getAllActiveOrders();
+    // If items are empty, remove key
+    if (items.length === 0) {
+        delete allOrders[tableNo];
+    } else {
+        allOrders[tableNo] = items;
+    }
+    await AsyncStorage.setItem(ACTIVE_ORDERS_KEY, JSON.stringify(allOrders));
     return true;
   } catch (error) {
     return false;
   }
 };
 
-export const loadCurrentOrder = async () => {
+// Load items for a specific table
+export const getActiveTableOrder = async (tableNo) => {
   try {
-    const data = await AsyncStorage.getItem(CURRENT_ORDER_KEY);
-    return data ? JSON.parse(data) : [];
+    const allOrders = await getAllActiveOrders();
+    return allOrders[tableNo] || [];
   } catch (error) {
     return [];
   }
 };
 
-export const clearCurrentOrder = async () => {
+// Clear a specific table (after billing)
+export const clearActiveTableOrder = async (tableNo) => {
   try {
-    await AsyncStorage.removeItem(CURRENT_ORDER_KEY);
+    const allOrders = await getAllActiveOrders();
+    delete allOrders[tableNo];
+    await AsyncStorage.setItem(ACTIVE_ORDERS_KEY, JSON.stringify(allOrders));
     return true;
   } catch (error) {
     return false;
   }
 };
 
-// ============ ORDER HISTORY (OPTIMIZED) ============
+// Helper: Calculate total for a table
+export const getTableTotal = (items) => {
+    if (!items) return 0;
+    return items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+};
+
+// ============ LEGACY CURRENT ORDER ============
+// Maps legacy calls to a default "Counter" table to prevent breaking old code
+export const saveCurrentOrder = async (orderItems) => {
+  return await saveActiveTableOrder('Counter', orderItems);
+};
+
+export const loadCurrentOrder = async () => {
+  return await getActiveTableOrder('Counter');
+};
+
+export const clearCurrentOrder = async () => {
+  return await clearActiveTableOrder('Counter');
+};
+
+// ============ ORDER HISTORY ============
 
 export const saveOrderToHistory = async (order) => {
   try {
@@ -250,7 +293,7 @@ export const saveOrderToHistory = async (order) => {
   }
 };
 
-// IMPROVEMENT: Date-Limited Loading (Default: Last 30 Days)
+// Date-Limited Loading (Default: Last 30 Days)
 export const loadOrderHistory = async (fetchAll = false) => {
   try {
     const data = await AsyncStorage.getItem(ORDERS_KEY);
@@ -386,7 +429,7 @@ export const createBackupObject = async () => {
   }
 };
 
-// --- NEW FUNCTION: RESTORE FULL BACKUP (FIXED KEYS) ---
+// --- RESTORE FULL BACKUP ---
 export const restoreFullBackup = async (backupData) => {
   try {
     const pairs = [];

@@ -8,29 +8,57 @@ import {
   ScrollView,
   RefreshControl,
   Platform,
+  Modal,
+  TextInput,
+  Alert
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
-import { useTheme } from '../context/ThemeContext'; // Theme Hook
+import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
-import { getTodaysSales, loadOrderHistory } from '../utils/storage';
+// MERGED IMPORTS: Added loadOrderHistory back
+import { getTodaysSales, loadOrderHistory, getAllActiveOrders, getTableTotal } from '../utils/storage';
 
 export default function HomeScreen({ navigation }) {
   const { t } = useLanguage();
-  const { theme, isDark } = useTheme(); // Use Theme
+  const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { isLandscape, isSmallScreen, isTablet } = useOrientation();
     
   const [todaySales, setTodaySales] = useState({ count: 0, total: 0 });
+  const [activeTables, setActiveTables] = useState([]);
+  // RESTORED: Recent Orders State
   const [recentOrders, setRecentOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [newTableNumber, setNewTableNumber] = useState('');
 
   const loadData = async () => {
+    // 1. Sales Data
     const sales = await getTodaysSales();
     setTodaySales(sales);
+
+    // 2. RESTORED: Recent Orders Data
     const history = await loadOrderHistory();
     setRecentOrders(history.slice(0, 5));
+
+    // 3. Active Tables Data
+    const activeOrdersMap = await getAllActiveOrders();
+    const tableList = Object.keys(activeOrdersMap).map(key => ({
+      tableNo: key,
+      items: activeOrdersMap[key],
+      total: getTableTotal(activeOrdersMap[key])
+    }));
+
+    // Sort: Numeric sort if possible, else string
+    tableList.sort((a, b) => {
+      const numA = parseInt(a.tableNo);
+      const numB = parseInt(b.tableNo);
+      return (isNaN(numA) || isNaN(numB)) ? a.tableNo.localeCompare(b.tableNo) : numA - numB;
+    });
+
+    setActiveTables(tableList);
   };
 
   useFocusEffect(
@@ -45,12 +73,25 @@ export default function HomeScreen({ navigation }) {
     setRefreshing(false);
   };
 
+  const handleNewOrder = () => {
+    setNewTableNumber('');
+    setModalVisible(true);
+  };
+
+  const startOrder = () => {
+    if (!newTableNumber.trim()) {
+      Alert.alert('Error', 'Please enter a table number');
+      return;
+    }
+    setModalVisible(false);
+    navigation.navigate('Order', { tableNo: newTableNumber.trim() });
+  };
+
   const getCurrentDate = () => {
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     return new Date().toLocaleDateString('en-IN', options);
   };
-
-  // Dynamic styles based on orientation AND Theme
+  
   const dynamicStyles = {
     container: {
       paddingBottom: Platform.OS === 'ios' ? insets.bottom + 20 : 30,
@@ -74,22 +115,18 @@ export default function HomeScreen({ navigation }) {
       width: isLandscape ? (isTablet ? '32%' : '48%') : '100%',
       marginHorizontal: isLandscape ? '0.5%' : 0,
       marginBottom: 12,
-      // Theme colors applied here
       backgroundColor: theme.card,
       shadowColor: isDark ? '#000' : '#000',
     },
     statsRow: {
-      flexDirection: isLandscape && !isTablet ? 'column' : 'row',
+        flexDirection: isLandscape && !isTablet ? 'column' : 'row',
     },
     actionButton: {
       paddingVertical: isLandscape ? 12 : 16,
-    },
-    statBox: {
-        backgroundColor: theme.statBox
     }
   };
 
-  // Common Text Style helpers
+  // Text helpers
   const textStyle = { color: theme.text };
   const subTextStyle = { color: theme.textSecondary };
 
@@ -99,16 +136,9 @@ export default function HomeScreen({ navigation }) {
         style={styles.container}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={dynamicStyles.container}
-        refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh} 
-            colors={[theme.primary]} 
-            tintColor={theme.primary} 
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.primary]} tintColor={theme.primary} />}
       >
-        {/* Header - Keeps primary color background */}
+        {/* Header */}
         <View style={[styles.header, dynamicStyles.header, { backgroundColor: theme.primary }]}>
           <View style={isLandscape ? {} : { alignItems: 'center' }}>
             <Text style={styles.welcomeText}>{t('welcomeTo')}</Text>
@@ -118,79 +148,74 @@ export default function HomeScreen({ navigation }) {
           <Text style={[styles.date, isLandscape && { marginTop: 0 }]}>{getCurrentDate()}</Text>
         </View>
 
-        {/* Content Container */}
+        {/* Content */}
         <View style={dynamicStyles.contentContainer}>
+          
+          {/* Active Tables Grid */}
+          <View style={[styles.card, dynamicStyles.card, { width: '100%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>🍽️ Active Tables</Text>
+                <TouchableOpacity onPress={handleNewOrder} style={{ backgroundColor: theme.primary, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 }}>
+                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ New Order</Text>
+                </TouchableOpacity>
+            </View>
+
+            {activeTables.length === 0 ? (
+                <Text style={{ textAlign: 'center', color: theme.textSecondary, fontStyle: 'italic', padding: 20 }}>No active orders. Click "+ New Order" to start.</Text>
+            ) : (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                    {activeTables.map((table) => (
+                        <TouchableOpacity 
+                            key={table.tableNo}
+                            style={[styles.tableBox, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+                            onPress={() => navigation.navigate('Order', { tableNo: table.tableNo })}
+                        >
+                            <Text style={[styles.tableNum, { color: theme.primary }]}>{table.tableNo}</Text>
+                            <Text style={{ color: theme.text, fontSize: 12 }}>Items: {table.items.reduce((s,i)=>s+i.quantity,0)}</Text>
+                            <Text style={{ color: theme.text, fontWeight: 'bold' }}>₹{table.total.toFixed(0)}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            )}
+          </View>
+
           {/* Today's Summary */}
           <View style={[styles.card, dynamicStyles.card]}>
-            <Text style={[styles.sectionTitle, textStyle]}>📊 {t('todaysSummary')}</Text>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>📊 {t('todaysSummary')}</Text>
             <View style={[styles.statsRow, dynamicStyles.statsRow]}>
-              <View style={[styles.statBox, dynamicStyles.statBox, isLandscape && !isTablet && { marginBottom: 8 }]}>
-                <Text style={[styles.statNumber, textStyle]}>{todaySales.count}</Text>
-                <Text style={[styles.statLabel, subTextStyle]}>{t('orders')}</Text>
+              <View style={[styles.statBox, { backgroundColor: theme.statBox }]}>
+                <Text style={[styles.statNumber, { color: theme.text }]}>{todaySales.count}</Text>
+                <Text style={[styles.statLabel, { color: theme.textSecondary }]}>{t('orders')}</Text>
               </View>
-              <View style={[styles.statBox, styles.statBoxHighlight, { backgroundColor: theme.primary }]}>
-                <Text style={[styles.statNumber, styles.statNumberHighlight]}>
-                  ₹{todaySales.total.toFixed(2)}
-                </Text>
-                <Text style={[styles.statLabel, styles.statLabelHighlight]}>{t('totalSales')}</Text>
+              <View style={[styles.statBox, { backgroundColor: theme.primary }]}>
+                <Text style={[styles.statNumber, { color: '#fff' }]}>₹{todaySales.total.toFixed(2)}</Text>
+                <Text style={[styles.statLabel, { color: '#ffcccc' }]}>{t('totalSales')}</Text>
               </View>
             </View>
           </View>
 
           {/* Quick Actions */}
           <View style={[styles.card, dynamicStyles.card]}>
-            <Text style={[styles.sectionTitle, textStyle]}>⚡ {t('quickActions')}</Text>
-            
-            {/* Row 1 */}
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>⚡ {t('quickActions')}</Text>
             <View style={styles.actionRow}>
-              <TouchableOpacity 
-                style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#4CAF50' }]}
-                onPress={() => navigation.navigate('Order')}
-              >
-                <Text style={styles.actionEmoji}>🛒</Text>
-                <Text style={styles.actionText}>{t('newOrder')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#2196F3' }]}
-                onPress={() => navigation.navigate('Menu')}
-              >
+               <TouchableOpacity style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#2196F3' }]} onPress={() => navigation.navigate('Menu')}>
                 <Text style={styles.actionEmoji}>📋</Text>
                 <Text style={styles.actionText}>{t('editMenu')}</Text>
               </TouchableOpacity>
-            </View>
-
-            {/* Row 2 */}
-            <View style={styles.actionRow}>
-              <TouchableOpacity 
-                style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#FF9800' }]}
-                onPress={() => navigation.navigate('Bill')}
-              >
-                <Text style={styles.actionEmoji}>🧾</Text>
-                <Text style={styles.actionText}>{t('viewBill')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#9C27B0' }]}
-                onPress={() => navigation.navigate('History')}
-              >
+              <TouchableOpacity style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#9C27B0' }]} onPress={() => navigation.navigate('History')}>
                 <Text style={styles.actionEmoji}>📊</Text>
                 <Text style={styles.actionText}>{t('history')}</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Row 3: SETTINGS BUTTON (Added Here) */}
-            <View style={styles.actionRow}>
-               <TouchableOpacity 
-                style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#607D8B' }]} // Grey color for Admin
-                onPress={() => navigation.navigate('Settings')}
-              >
+             <View style={styles.actionRow}>
+               <TouchableOpacity style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#607D8B' }]} onPress={() => navigation.navigate('Settings')}>
                 <Text style={styles.actionEmoji}>⚙️</Text>
                 <Text style={styles.actionText}>Settings</Text>
               </TouchableOpacity>
             </View>
-
           </View>
 
-          {/* Recent Orders */}
+          {/* RESTORED: Recent Orders */}
           <View style={[styles.card, dynamicStyles.card, isLandscape && isTablet && { width: '32%' }]}>
             <Text style={[styles.sectionTitle, textStyle]}>🕐 {t('recentOrders')}</Text>
             {recentOrders.length === 0 ? (
@@ -207,6 +232,7 @@ export default function HomeScreen({ navigation }) {
               ))
             )}
           </View>
+
         </View>
 
         {/* Footer */}
@@ -214,140 +240,82 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.footerText}>{t('madeWithLove')}</Text>
         </View>
       </ScrollView>
+
+      {/* New Table Modal */}
+      <Modal visible={modalVisible} transparent={true} animationType="fade">
+        <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Enter Table Number</Text>
+                <TextInput 
+                    style={[styles.input, { color: theme.text, backgroundColor: theme.inputBackground, borderColor: theme.border }]}
+                    placeholder="e.g., 5, T-1, Parcel"
+                    placeholderTextColor={theme.textSecondary}
+                    value={newTableNumber}
+                    onChangeText={setNewTableNumber}
+                    autoFocus={true}
+                />
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+                    <TouchableOpacity style={[styles.modalBtn, { backgroundColor: theme.inputBackground }]} onPress={() => setModalVisible(false)}>
+                        <Text style={{ color: theme.text }}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.modalBtn, { backgroundColor: theme.primary }]} onPress={startOrder}>
+                        <Text style={{ color: '#fff', fontWeight: 'bold' }}>Start Order</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  mainWrapper: {
-    flex: 1,
+  mainWrapper: { flex: 1 },
+  container: { flex: 1 },
+  header: { borderBottomLeftRadius: 25, borderBottomRightRadius: 25 },
+  welcomeText: { color: '#ffcccc', fontSize: 14 },
+  hotelName: { color: '#fff', fontWeight: 'bold', fontSize: 24, marginTop: 5 },
+  location: { color: '#ffcccc', fontSize: 13, marginTop: 5 }, // RESTORED
+  date: { color: '#fff', fontSize: 12, marginTop: 10, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 15 },
+  card: { borderRadius: 12, padding: 15, elevation: 3, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 12 },
+  statsRow: { justifyContent: 'space-between' },
+  statBox: { flex: 1, paddingVertical: 16, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center', marginHorizontal: 4 },
+  statNumber: { fontSize: 22, fontWeight: 'bold' },
+  statLabel: { fontSize: 12, marginTop: 4 },
+  actionRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  actionButton: { flex: 1, borderRadius: 10, alignItems: 'center', marginHorizontal: 4 },
+  actionEmoji: { fontSize: 26 },
+  actionText: { color: '#fff', fontSize: 12, fontWeight: 'bold', marginTop: 4, textAlign: 'center' },
+  footer: { padding: 20, alignItems: 'center' },
+  footerText: { color: '#999', fontSize: 11 },
+  
+  // New Styles for Active Tables
+  tableBox: {
+      width: '30%',
+      aspectRatio: 1,
+      borderWidth: 1,
+      borderRadius: 10,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 10,
+      marginRight: '3%'
   },
-  container: { 
-    flex: 1, 
-  },
-  header: {
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
-  },
-  welcomeText: { 
-    color: '#ffcccc', 
-    fontSize: 14,
-  },
-  hotelName: { 
-    color: '#fff', 
-    fontWeight: 'bold', 
-    marginTop: 5,
-  },
-  location: { 
-    color: '#ffcccc', 
-    fontSize: 13, 
-    marginTop: 5,
-  },
-  date: {
-    color: '#fff',
-    fontSize: 12,
-    marginTop: 10,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 15,
-  },
-  card: {
-    borderRadius: 12,
-    padding: 15,
-    elevation: 3,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  sectionTitle: { 
-    fontSize: 16, 
-    fontWeight: 'bold', 
-    marginBottom: 12,
-  },
-  statsRow: { 
-    justifyContent: 'space-between',
-  },
-  statBox: {
-    flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginHorizontal: 4,
-  },
-  statBoxHighlight: { 
-    // Handled dynamically
-  },
-  statNumber: { 
-    fontSize: 22, 
-    fontWeight: 'bold', 
-  },
-  statNumberHighlight: { 
-    color: '#fff',
-  },
-  statLabel: { 
-    fontSize: 12, 
-    marginTop: 4,
-  },
-  statLabelHighlight: { 
-    color: '#ffcccc',
-  },
-  actionRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    marginBottom: 8,
-  },
-  actionButton: {
-    flex: 1,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginHorizontal: 4,
-  },
-  actionEmoji: { 
-    fontSize: 26,
-  },
-  actionText: { 
-    color: '#fff', 
-    fontSize: 12, 
-    fontWeight: 'bold', 
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  noOrders: { 
-    textAlign: 'center', 
-    color: '#999', 
-    fontStyle: 'italic',
-    fontSize: 13,
-  },
-  orderItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  orderInfo: { 
-    flex: 1,
-  },
-  orderNumber: { 
-    fontSize: 15, 
-    fontWeight: '600', 
-  },
-  orderTime: { 
-    fontSize: 11, 
-    marginTop: 2,
-  },
-  orderAmount: { 
-    fontSize: 17, 
-    fontWeight: 'bold', 
-  },
-  footer: { 
-    padding: 20, 
-    alignItems: 'center',
-  },
-  footerText: { 
-    color: '#999', 
-    fontSize: 11,
-  },
+  tableNum: { fontSize: 24, fontWeight: 'bold', marginBottom: 5 },
+  
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: 300, padding: 20, borderRadius: 15, alignItems: 'center' },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
+  input: { width: '100%', height: 45, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10 },
+  modalBtn: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center' },
+  
+  // RESTORED Styles for Recent Orders
+  noOrders: { textAlign: 'center', color: '#999', fontStyle: 'italic', fontSize: 13 },
+  orderItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1 },
+  orderInfo: { flex: 1 },
+  orderNumber: { fontSize: 15, fontWeight: '600' },
+  orderTime: { fontSize: 11, marginTop: 2 },
+  orderAmount: { fontSize: 17, fontWeight: 'bold' },
 });
