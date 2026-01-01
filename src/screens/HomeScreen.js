@@ -17,8 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
-// MERGED IMPORTS: Added loadOrderHistory back
-import { getTodaysSales, loadOrderHistory, getAllActiveOrders, getTableTotal } from '../utils/storage';
+// IMPORTED clearActiveTableOrder
+import { getTodaysSales, loadOrderHistory, getAllActiveOrders, getTableTotal, clearActiveTableOrder } from '../utils/storage';
 
 export default function HomeScreen({ navigation }) {
   const { t } = useLanguage();
@@ -28,7 +28,6 @@ export default function HomeScreen({ navigation }) {
     
   const [todaySales, setTodaySales] = useState({ count: 0, total: 0 });
   const [activeTables, setActiveTables] = useState([]);
-  // RESTORED: Recent Orders State
   const [recentOrders, setRecentOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -39,7 +38,7 @@ export default function HomeScreen({ navigation }) {
     const sales = await getTodaysSales();
     setTodaySales(sales);
 
-    // 2. RESTORED: Recent Orders Data
+    // 2. Recent Orders Data
     const history = await loadOrderHistory();
     setRecentOrders(history.slice(0, 5));
 
@@ -87,6 +86,25 @@ export default function HomeScreen({ navigation }) {
     navigation.navigate('Order', { tableNo: newTableNumber.trim() });
   };
 
+  // NEW: Handle Deletion
+  const handleDeleteTable = (tableNo) => {
+    Alert.alert(
+        'Delete Order?',
+        `Are you sure you want to clear the active order for Table ${tableNo}?`,
+        [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+                text: 'Delete', 
+                style: 'destructive', 
+                onPress: async () => {
+                    await clearActiveTableOrder(tableNo);
+                    await loadData(); // Refresh list immediately
+                }
+            }
+        ]
+    );
+  };
+
   const getCurrentDate = () => {
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     return new Date().toLocaleDateString('en-IN', options);
@@ -126,7 +144,6 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  // Text helpers
   const textStyle = { color: theme.text };
   const subTextStyle = { color: theme.textSecondary };
 
@@ -153,12 +170,16 @@ export default function HomeScreen({ navigation }) {
           
           {/* Active Tables Grid */}
           <View style={[styles.card, dynamicStyles.card, { width: '100%' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>🍽️ Active Tables</Text>
                 <TouchableOpacity onPress={handleNewOrder} style={{ backgroundColor: theme.primary, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 }}>
                     <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ New Order</Text>
                 </TouchableOpacity>
             </View>
+            {/* Hint for Deletion */}
+            <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 15, fontStyle: 'italic' }}>
+                {activeTables.length > 0 ? "(Long press a table to delete)" : ""}
+            </Text>
 
             {activeTables.length === 0 ? (
                 <Text style={{ textAlign: 'center', color: theme.textSecondary, fontStyle: 'italic', padding: 20 }}>No active orders. Click "+ New Order" to start.</Text>
@@ -169,6 +190,8 @@ export default function HomeScreen({ navigation }) {
                             key={table.tableNo}
                             style={[styles.tableBox, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
                             onPress={() => navigation.navigate('Order', { tableNo: table.tableNo })}
+                            onLongPress={() => handleDeleteTable(table.tableNo)} // ADDED LONG PRESS
+                            delayLongPress={500}
                         >
                             <Text style={[styles.tableNum, { color: theme.primary }]}>{table.tableNo}</Text>
                             <Text style={{ color: theme.text, fontSize: 12 }}>Items: {table.items.reduce((s,i)=>s+i.quantity,0)}</Text>
@@ -202,12 +225,19 @@ export default function HomeScreen({ navigation }) {
                 <Text style={styles.actionEmoji}>📋</Text>
                 <Text style={styles.actionText}>{t('editMenu')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#9C27B0' }]} onPress={() => navigation.navigate('History')}>
+              
+              <TouchableOpacity style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#FF9800' }]} onPress={() => navigation.navigate('Order', { tableNo: 'Counter' })}>
+                <Text style={styles.actionEmoji}>🛒</Text>
+                <Text style={styles.actionText}>Counter Order</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.actionRow}>
+               <TouchableOpacity style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#9C27B0' }]} onPress={() => navigation.navigate('History')}>
                 <Text style={styles.actionEmoji}>📊</Text>
                 <Text style={styles.actionText}>{t('history')}</Text>
               </TouchableOpacity>
-            </View>
-             <View style={styles.actionRow}>
+
                <TouchableOpacity style={[styles.actionButton, dynamicStyles.actionButton, { backgroundColor: '#607D8B' }]} onPress={() => navigation.navigate('Settings')}>
                 <Text style={styles.actionEmoji}>⚙️</Text>
                 <Text style={styles.actionText}>Settings</Text>
@@ -215,7 +245,7 @@ export default function HomeScreen({ navigation }) {
             </View>
           </View>
 
-          {/* RESTORED: Recent Orders */}
+          {/* Recent Orders */}
           <View style={[styles.card, dynamicStyles.card, isLandscape && isTablet && { width: '32%' }]}>
             <Text style={[styles.sectionTitle, textStyle]}>🕐 {t('recentOrders')}</Text>
             {recentOrders.length === 0 ? (
@@ -276,7 +306,7 @@ const styles = StyleSheet.create({
   header: { borderBottomLeftRadius: 25, borderBottomRightRadius: 25 },
   welcomeText: { color: '#ffcccc', fontSize: 14 },
   hotelName: { color: '#fff', fontWeight: 'bold', fontSize: 24, marginTop: 5 },
-  location: { color: '#ffcccc', fontSize: 13, marginTop: 5 }, // RESTORED
+  location: { color: '#ffcccc', fontSize: 13, marginTop: 5 },
   date: { color: '#fff', fontSize: 12, marginTop: 10, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 15 },
   card: { borderRadius: 12, padding: 15, elevation: 3, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 12 },
@@ -311,7 +341,7 @@ const styles = StyleSheet.create({
   input: { width: '100%', height: 45, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10 },
   modalBtn: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center' },
   
-  // RESTORED Styles for Recent Orders
+  // Styles for Recent Orders
   noOrders: { textAlign: 'center', color: '#999', fontStyle: 'italic', fontSize: 13 },
   orderItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1 },
   orderInfo: { flex: 1 },

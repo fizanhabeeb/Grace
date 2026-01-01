@@ -48,7 +48,9 @@ export default function BillScreen({ navigation, route }) {
   const round = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
 
   useFocusEffect(
-    useCallback(() => { loadData(); }, [])
+    useCallback(() => { 
+        loadData(); 
+    }, [tableNo]) // DEPENDENCY ADDED: Refreshes when tableNo changes
   );
 
   const loadData = async () => {
@@ -69,7 +71,7 @@ export default function BillScreen({ navigation, route }) {
     setIsSaved(false);
     setDiscount('0');
     setPaymentMode('Cash');
-    setTableNumber(tableNo); // Ensure table number is set
+    setTableNumber(tableNo); // Ensure table number is set to the param
   };
 
   const calculateSubtotal = () => round(orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0));
@@ -203,7 +205,6 @@ export default function BillScreen({ navigation, route }) {
     Alert.alert('Saved', 'Settings saved successfully!');
   };
 
-  // ... [Keep Render Return Statement similar to before] ...
   if (orderItems.length === 0 && !isSaved) {
     return (
       <View style={[globalStyles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -224,10 +225,6 @@ export default function BillScreen({ navigation, route }) {
           <Text style={styles.billInfoText}>Table: {tableNumber} | Bill: #{billNumber}</Text>
         </View>
 
-        {/* ... [Rest of the UI remains largely the same] ... */}
-        {/* Just ensure `tableNumber` input in the Customer Details card uses `tableNumber` state, but maybe disable it if we want to enforce the table selected at start? */}
-        {/* For now, we allow editing it if the waiter made a mistake */}
-        
         <View style={[isLandscape && { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8 }]}>
           
            {/* Payment & Discount */}
