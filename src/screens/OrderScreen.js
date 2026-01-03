@@ -115,7 +115,11 @@ export default function OrderScreen({ navigation, route }) {
   
   const startListening = async () => {
     try {
-      // 1. Explicitly ask for Android Permission
+      // 1. Destroy any old sessions first (Fixes Error 5)
+      await Voice.destroy(); 
+      setIsListening(false);
+
+      // 2. Explicitly ask for Android Permission
       if (Platform.OS === 'android') {
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
@@ -134,18 +138,15 @@ export default function OrderScreen({ navigation, route }) {
         }
       }
 
-      // 2. Start Listening
+      // 3. Start Listening
       setIsListening(true);
-      
-      // Use English (India) or Malayalam (India) based on app language
-      // Fallback to 'en-US' if needed for testing
       const locale = language === 'ml' ? 'ml-IN' : 'en-IN'; 
-      
       await Voice.start(locale);
+      
     } catch (e) {
       console.error(e);
       setIsListening(false);
-      Alert.alert("Error", "Could not start microphone. Check internet connection.");
+      Alert.alert("Error", "Could not start microphone.");
     }
   };
 
