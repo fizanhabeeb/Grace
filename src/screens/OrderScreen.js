@@ -12,8 +12,7 @@ import {
   Platform, 
   TextInput,
   ActivityIndicator,
-  Alert,
-  PermissionsAndroid // <--- REQUIRED FOR ANDROID PERMISSIONS
+  Alert
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,10 +22,9 @@ import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
 import { loadMenu, saveActiveTableOrder, getActiveTableOrder } from '../utils/storage';
 import Fuse from 'fuse.js';
-import Voice from '@react-native-voice/voice';
 
 export default function OrderScreen({ navigation, route }) {
-  const { t, getCategoryName, language } = useLanguage();
+  const { t, getCategoryName } = useLanguage();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { isLandscape, numColumns, cardWidth, isTablet } = useOrientation();
@@ -41,39 +39,10 @@ export default function OrderScreen({ navigation, route }) {
   const [variantModalVisible, setVariantModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
-  // --- VOICE STATE ---
-  const [isListening, setIsListening] = useState(false);
-
   const categories = ['All', 'Breakfast', 'Rice', 'Curry', 'Snacks', 'Beverages'];
   const safeBottom = Platform.OS === 'ios' ? insets.bottom : 10;
   const orderBarHeight = isLandscape ? 120 : 180;
   const bottomPadding = orderItems.length > 0 ? orderBarHeight + safeBottom + 20 : 20;
-
-  // --- VOICE LIFECYCLE ---
-  useEffect(() => {
-    Voice.onSpeechStart = () => setIsListening(true);
-    Voice.onSpeechEnd = () => setIsListening(false);
-    Voice.onSpeechResults = onSpeechResults;
-    Voice.onSpeechError = (e) => {
-      console.log('Voice Error Object:', e);
-      setIsListening(false);
-      
-      // --- DEBUGGING: SHOW EXACT ERROR CODE ---
-      // This helps us identify if it's a Permission (5), Network (6), or No Match (7) error.
-      const errorMsg = e.error ? e.error.message : 'Unknown Error';
-      
-      // Ignore common "No match" errors to avoid spamming the user
-      if (errorMsg.includes('7') || errorMsg.includes('no match')) {
-         // Do nothing, just stopped listening
-      } else {
-         Alert.alert('Voice Error', `Debug Code: ${JSON.stringify(e.error)}\n\nPlease try again.`);
-      }
-    };
-
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
-    };
-  }, [menuItems, orderItems]); 
 
   useFocusEffect(
     useCallback(() => {
@@ -111,136 +80,7 @@ export default function OrderScreen({ navigation, route }) {
     return results;
   }, [menuItems, selectedCategory, debouncedSearchText, fuse]);
 
-  // --- VOICE HANDLERS ---
-  
-  const startListening = async () => {
-    try {
-      // 1. Destroy any old sessions first (Fixes Error 5)
-      await Voice.destroy(); 
-      setIsListening(false);
-
-      // 2. Explicitly ask for Android Permission
-      if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-          {
-            title: "Microphone Permission",
-            message: "We need access to your microphone to take voice orders.",
-            buttonNeutral: "Ask Me Later",
-            buttonNegative: "Cancel",
-            buttonPositive: "OK"
-          }
-        );
-        
-        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-          Alert.alert("Permission Denied", "Voice ordering cannot work without microphone access.");
-          return;
-        }
-      }
-
-      // 3. Start Listening
-      setIsListening(true);
-      const locale = language === 'ml' ? 'ml-IN' : 'en-IN'; 
-      await Voice.start(locale);
-      
-    } catch (e) {
-      console.error(e);
-      setIsListening(false);
-      Alert.alert("Error", "Could not start microphone.");
-    }
-  };
-
-  const stopListening = async () => {
-    try {
-      await Voice.stop();
-      setIsListening(false);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const onSpeechResults = (e) => {
-    const text = e.value && e.value[0] ? e.value[0] : '';
-    if (text) {
-      processVoiceCommand(text);
-    }
-    stopListening();
-  };
-
-  // --- INTELLIGENT VOICE PARSER ---
-  const processVoiceCommand = async (text) => {
-    const numberMap = {
-      'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 
-      'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
-      'ഒന്ന്': 1, 'രണ്ട്': 2, 'മൂന്ന്': 3, 'നാല്': 4, 'അഞ്ച്': 5,
-      'ആറ്': 6, 'ഏഴ്': 7, 'എട്ട്': 8, 'ഒമ്പത്': 9, 'പത്ത്': 10,
-      'ഒരു': 1, 
-    };
-
-    let normalized = text.toLowerCase();
-    Object.keys(numberMap).forEach(key => {
-      normalized = normalized.replace(new RegExp(`\\b${key}\\b`, 'g'), numberMap[key]);
-    });
-
-    // Split by common separators (English "and", Malayalam "pinne", Comma)
-    const segments = normalized.split(/,| and | പിന്നെ | with /);
-    let itemsAdded = 0;
-    const newItemsToAdd = [];
-
-    for (const segment of segments) {
-      const trimmed = segment.trim();
-      if (!trimmed) continue;
-
-      const numberMatch = trimmed.match(/(\d+)/);
-      const quantity = numberMatch ? parseInt(numberMatch[0]) : 1;
-      const query = trimmed.replace(/\d+/, '').trim();
-
-      if (query.length > 2) {
-        const results = fuse.search(query);
-        // Ensure strict matching to avoid wrong items
-        if (results.length > 0 && results[0].score < 0.4) {
-          const match = results[0].item;
-          newItemsToAdd.push({ item: match, qty: quantity });
-          itemsAdded++;
-        }
-      }
-    }
-
-    if (itemsAdded > 0) {
-      let currentOrderList = [...orderItems]; 
-      
-      for (const { item, qty } of newItemsToAdd) {
-        if (item.hasVariants) {
-           Alert.alert('Variant Required', `Please manually select variant for ${item.name}`);
-           continue; 
-        }
-
-        const orderItemId = `${item.id}-${item.name}`;
-        const existingIndex = currentOrderList.findIndex(i => i.orderId === orderItemId);
-
-        if (existingIndex >= 0) {
-          currentOrderList[existingIndex].quantity += qty;
-        } else {
-          currentOrderList.push({
-            orderId: orderItemId,
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: qty,
-            image: item.image,
-          });
-        }
-      }
-
-      setOrderItems(currentOrderList);
-      await saveActiveTableOrder(tableNo, currentOrderList);
-      Alert.alert('Voice Order', `Added ${itemsAdded} item(s) to the cart.`);
-    } else {
-      Alert.alert('Not Found', `Could not find items matching "${text}"`);
-    }
-  };
-
-  // --- EXISTING ORDER LOGIC ---
+  // --- ORDER LOGIC ---
   const handleItemClick = (menuItem) => {
     if (menuItem.hasVariants && menuItem.variants.length > 0) {
       setSelectedItem(menuItem);
@@ -355,18 +195,6 @@ export default function OrderScreen({ navigation, route }) {
                     </TouchableOpacity>
                 )}
             </View>
-
-            {/* VOICE BUTTON */}
-            <TouchableOpacity 
-                onPress={isListening ? stopListening : startListening}
-                style={[styles.voiceBtn, { backgroundColor: isListening ? '#ff4444' : theme.primary }]}
-            >
-                {isListening ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                    <Ionicons name="mic" size={24} color="#fff" />
-                )}
-            </TouchableOpacity>
         </View>
       </View>
 
@@ -477,13 +305,5 @@ const styles = StyleSheet.create({
   variantModalContent: { borderRadius: 20, padding: 20, width: '85%' },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   variantOption: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1 },
-  closeBtn: { marginTop: 15, alignItems: 'center', padding: 10 },
-  voiceBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 3
-  }
+  closeBtn: { marginTop: 15, alignItems: 'center', padding: 10 }
 });
