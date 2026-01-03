@@ -28,9 +28,19 @@
       "permissions": [
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "INTERNET"
+        "INTERNET",
+        "RECORD_AUDIO"
       ]
     },
+    "plugins": [
+      [
+        "@react-native-voice/voice",
+        {
+          "microphonePermission": "Allow Grace POS to access the microphone for voice ordering.",
+          "speechRecognitionPermission": "Allow Grace POS to recognize your voice for ordering."
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     },

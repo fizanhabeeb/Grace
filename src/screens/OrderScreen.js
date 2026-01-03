@@ -1,6 +1,19 @@
 // src/screens/OrderScreen.js
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, Image, Modal, Platform, TextInput } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  FlatList, 
+  TouchableOpacity, 
+  ScrollView, 
+  Image, 
+  Modal, 
+  Platform, 
+  TextInput,
+  ActivityIndicator,
+  Alert
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,16 +21,15 @@ import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
 import { loadMenu, saveActiveTableOrder, getActiveTableOrder } from '../utils/storage';
-// NEW IMPORT: Fuse.js for Fuzzy Search
-import Fuse from 'fuse.js'; 
+import Fuse from 'fuse.js';
+import Voice from '@react-native-voice/voice'; // NEW IMPORT
 
 export default function OrderScreen({ navigation, route }) {
-  const { t, getCategoryName } = useLanguage();
+  const { t, getCategoryName, language } = useLanguage();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { isLandscape, numColumns, cardWidth, isTablet } = useOrientation();
 
-  // GET TABLE NUMBER FROM PARAMS (Default to 'Counter' if missing)
   const { tableNo } = route.params || { tableNo: 'Counter' };
   
   const [menuItems, setMenuItems] = useState([]);
@@ -28,58 +40,189 @@ export default function OrderScreen({ navigation, route }) {
   const [variantModalVisible, setVariantModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
+  // --- VOICE STATE ---
+  const [isListening, setIsListening] = useState(false);
+
   const categories = ['All', 'Breakfast', 'Rice', 'Curry', 'Snacks', 'Beverages'];
   const safeBottom = Platform.OS === 'ios' ? insets.bottom : 10;
   const orderBarHeight = isLandscape ? 120 : 180;
   const bottomPadding = orderItems.length > 0 ? orderBarHeight + safeBottom + 20 : 20;
 
+  // --- VOICE LIFECYCLE ---
+  useEffect(() => {
+    Voice.onSpeechStart = () => setIsListening(true);
+    Voice.onSpeechEnd = () => setIsListening(false);
+    Voice.onSpeechResults = onSpeechResults;
+    Voice.onSpeechError = (e) => {
+      console.log('Voice Error:', e);
+      setIsListening(false);
+      Alert.alert('Voice Error', 'Could not recognize speech. Try again.');
+    };
+
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+    };
+  }, [menuItems, orderItems]); // Re-bind if menu/order changes to ensure parser has latest data
+
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [tableNo]) // Re-load if table changes
+    }, [tableNo]) 
   );
 
   const loadData = async () => {
     const menu = await loadMenu();
     setMenuItems(menu);
-    // Load Specific Table Order
     const currentOrder = await getActiveTableOrder(tableNo);
     setOrderItems(currentOrder);
   };
 
-  // Debounce the search text to avoid lagging while typing
   useEffect(() => {
     const handler = setTimeout(() => { setDebouncedSearchText(searchText); }, 300);
     return () => clearTimeout(handler);
   }, [searchText]);
 
-  // --- FUSE.JS INTEGRATION START ---
-  // Create the Fuse instance (Memoized to prevent recreation on every render)
   const fuse = useMemo(() => new Fuse(menuItems, {
     keys: ['name', 'category'],
-    threshold: 0.3, // 0.0 is exact match, 1.0 is match anything. 0.3 handles typos well.
+    threshold: 0.3, 
   }), [menuItems]);
 
   const filteredMenu = useMemo(() => {
     let results = [];
-
-    // 1. Apply Search Strategy
     if (debouncedSearchText) {
-      // Use Fuse.js for fuzzy searching (Handles 'bryani' -> 'Biriyani')
       results = fuse.search(debouncedSearchText).map(result => result.item);
     } else {
-      // If no search, start with all items
       results = menuItems;
     }
-
-    // 2. Apply Category Filter (Preserving existing feature)
     if (selectedCategory !== 'All') {
       results = results.filter(item => item.category === selectedCategory);
     }
-
     return results;
   }, [menuItems, selectedCategory, debouncedSearchText, fuse]);
-  // --- FUSE.JS INTEGRATION END ---
+
+  // --- VOICE HANDLERS ---
+  
+  const startListening = async () => {
+    try {
+      setIsListening(true);
+      // Determine locale based on app language setting
+      const locale = language === 'ml' ? 'ml-IN' : 'en-IN'; 
+      await Voice.start(locale);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const stopListening = async () => {
+    try {
+      await Voice.stop();
+      setIsListening(false);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const onSpeechResults = (e) => {
+    const text = e.value && e.value[0] ? e.value[0] : '';
+    if (text) {
+      processVoiceCommand(text);
+    }
+    stopListening();
+  };
+
+  // --- INTELLIGENT VOICE PARSER (English & Malayalam) ---
+  const processVoiceCommand = async (text) => {
+    // 1. Dictionary for Number Words
+    const numberMap = {
+      // English
+      'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 
+      'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+      // Malayalam
+      'ഒന്ന്': 1, 'രണ്ട്': 2, 'മൂന്ന്': 3, 'നാല്': 4, 'അഞ്ച്': 5,
+      'ആറ്': 6, 'ഏഴ്': 7, 'എട്ട്': 8, 'ഒമ്പത്': 9, 'പത്ത്': 10,
+      'ഒരു': 1, // Common variation "Oru"
+    };
+
+    // 2. Normalize text: lowercase and replace number-words with digits
+    let normalized = text.toLowerCase();
+    Object.keys(numberMap).forEach(key => {
+      // Replace whole words only
+      normalized = normalized.replace(new RegExp(`\\b${key}\\b`, 'g'), numberMap[key]);
+    });
+
+    // 3. Split by common separators (and, comma, pinne - Malayalam 'then')
+    const segments = normalized.split(/,| and | പിന്നെ | with /);
+
+    let itemsAdded = 0;
+    const newItemsToAdd = [];
+
+    // 4. Analyze each segment (e.g., "2 chicken biriyani")
+    for (const segment of segments) {
+      const trimmed = segment.trim();
+      if (!trimmed) continue;
+
+      // Extract number if present (e.g., "2")
+      const numberMatch = trimmed.match(/(\d+)/);
+      const quantity = numberMatch ? parseInt(numberMatch[0]) : 1;
+
+      // Remove the number to get the item name
+      const query = trimmed.replace(/\d+/, '').trim();
+
+      if (query.length > 2) {
+        // Use Fuse.js to find the best match in the menu
+        const results = fuse.search(query);
+        
+        // Strict check: Must be a good match (score < 0.4)
+        if (results.length > 0 && results[0].score < 0.4) {
+          const match = results[0].item;
+          newItemsToAdd.push({ item: match, qty: quantity });
+          itemsAdded++;
+        }
+      }
+    }
+
+    if (itemsAdded > 0) {
+      // Add all found items to order
+      let currentOrderList = [...orderItems]; 
+      
+      // We need to fetch fresh state logic here usually, but since we are inside component, 
+      // we must rely on the 'orderItems' state being relatively fresh or use functional update.
+      // However, for bulk updates, let's construct the new array properly.
+      
+      for (const { item, qty } of newItemsToAdd) {
+        // Handle Variants: If item has variants, we can't auto-add (show alert or pick default)
+        // For simplicity, we skip variant items in voice mode or add base price
+        if (item.hasVariants) {
+           Alert.alert('Variant Required', `Please manually select variant for ${item.name}`);
+           continue; 
+        }
+
+        const orderItemId = `${item.id}-${item.name}`;
+        const existingIndex = currentOrderList.findIndex(i => i.orderId === orderItemId);
+
+        if (existingIndex >= 0) {
+          currentOrderList[existingIndex].quantity += qty;
+        } else {
+          currentOrderList.push({
+            orderId: orderItemId,
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: qty,
+            image: item.image,
+          });
+        }
+      }
+
+      setOrderItems(currentOrderList);
+      await saveActiveTableOrder(tableNo, currentOrderList);
+      Alert.alert('Voice Order', `Added ${itemsAdded} item(s) to the cart.`);
+    } else {
+      Alert.alert('Not Found', `Could not find items matching "${text}"`);
+    }
+  };
+
+  // --- EXISTING ORDER LOGIC ---
 
   const handleItemClick = (menuItem) => {
     if (menuItem.hasVariants && menuItem.variants.length > 0) {
@@ -110,7 +253,7 @@ export default function OrderScreen({ navigation, route }) {
       }];
     }
     setOrderItems(updatedOrder);
-    await saveActiveTableOrder(tableNo, updatedOrder); // SAVE TO TABLE
+    await saveActiveTableOrder(tableNo, updatedOrder);
     setVariantModalVisible(false);
   };
 
@@ -122,7 +265,7 @@ export default function OrderScreen({ navigation, route }) {
         ? orderItems.map((item, index) => index === existingIndex ? { ...item, quantity: item.quantity - 1 } : item)
         : orderItems.filter((_, index) => index !== existingIndex);
       setOrderItems(updatedOrder);
-      await saveActiveTableOrder(tableNo, updatedOrder); // SAVE TO TABLE
+      await saveActiveTableOrder(tableNo, updatedOrder);
     }
   };
 
@@ -177,20 +320,36 @@ export default function OrderScreen({ navigation, route }) {
              <Text style={{ color: theme.textSecondary }}>Close</Text>
            </TouchableOpacity>
         </View>
-        <View style={[styles.searchWrapper, { backgroundColor: theme.inputBackground }]}>
-          <Ionicons name="search" size={20} color={theme.textSecondary} style={{ marginRight: 8 }} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.text }]}
-            placeholder={t('enterItemName')}
-            placeholderTextColor={theme.textSecondary}
-            value={searchText}
-            onChangeText={setSearchText} 
-          />
-          {searchText !== '' && (
-            <TouchableOpacity onPress={() => setSearchText('')}>
-              <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
+        
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {/* Search Input */}
+            <View style={[styles.searchWrapper, { backgroundColor: theme.inputBackground, flex: 1 }]}>
+                <Ionicons name="search" size={20} color={theme.textSecondary} style={{ marginRight: 8 }} />
+                <TextInput
+                    style={[styles.searchInput, { color: theme.text }]}
+                    placeholder={t('enterItemName')}
+                    placeholderTextColor={theme.textSecondary}
+                    value={searchText}
+                    onChangeText={setSearchText} 
+                />
+                {searchText !== '' && (
+                    <TouchableOpacity onPress={() => setSearchText('')}>
+                    <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                )}
+            </View>
+
+            {/* VOICE BUTTON (NEW) */}
+            <TouchableOpacity 
+                onPress={isListening ? stopListening : startListening}
+                style={[styles.voiceBtn, { backgroundColor: isListening ? '#ff4444' : theme.primary }]}
+            >
+                {isListening ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                    <Ionicons name="mic" size={24} color="#fff" />
+                )}
             </TouchableOpacity>
-          )}
         </View>
       </View>
 
@@ -237,14 +396,14 @@ export default function OrderScreen({ navigation, route }) {
           </ScrollView>
           <TouchableOpacity 
             style={[styles.billButton, { backgroundColor: theme.primary }]} 
-            onPress={() => navigation.navigate('Bill', { tableNo: tableNo })} // PASS TABLE NO TO BILL
+            onPress={() => navigation.navigate('Bill', { tableNo: tableNo })}
           >
             <Text style={styles.billButtonText}>{t('viewBillArrow')} (₹{orderItems.reduce((s, i) => s + (i.price * i.quantity), 0).toFixed(2)})</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Variant Modal (Keep existing) */}
+      {/* Variant Modal */}
       <Modal visible={variantModalVisible} animationType="slide" transparent={true}>
           <View style={styles.variantModalOverlay}>
               <View style={[styles.variantModalContent, { backgroundColor: theme.card }]}>
@@ -302,4 +461,13 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   variantOption: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1 },
   closeBtn: { marginTop: 15, alignItems: 'center', padding: 10 },
+  // NEW STYLE
+  voiceBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 3
+  }
 });
