@@ -25,17 +25,16 @@ import { restoreAllData } from '../utils/backup';
 
 // --- DATA MANAGEMENT IMPORTS ---
 import * as Sharing from 'expo-sharing';
-// Using legacy to prevent crash on new Expo versions
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 
 export default function SettingsScreen({ navigation }) {
   const { theme } = useTheme();
-  const { t } = useLanguage();
+  const { t, language, toggleLanguage } = useLanguage();
 
   // Screen States
   const [loading, setLoading] = useState(true);
-  const [isLocked, setIsLocked] = useState(false); // Controls the Lock Screen
+  const [isLocked, setIsLocked] = useState(false); 
   const [unlockInput, setUnlockInput] = useState('');
 
   // Settings States
@@ -47,7 +46,10 @@ export default function SettingsScreen({ navigation }) {
   
   // Security States
   const [pinEnabled, setPinEnabled] = useState(false);
-  const [adminPin, setAdminPin] = useState('1234'); // Default PIN
+  const [adminPin, setAdminPin] = useState('1234'); 
+
+  // --- NEW: MASTER KEY FOR RESET ---
+  const MASTER_KEY = '123456';
 
   useEffect(() => {
     loadCurrentSettings();
@@ -80,14 +82,40 @@ export default function SettingsScreen({ navigation }) {
       setIsLocked(false);
       setUnlockInput('');
     } else {
-      Alert.alert("Access Denied", "Incorrect PIN.");
+      Alert.alert(t('accessDenied'), t('incorrectPIN'));
       setUnlockInput('');
+    }
+  };
+
+  // --- FORGOT PIN HANDLER (UPDATED) ---
+  const handleForgotPin = async () => {
+    if (unlockInput === MASTER_KEY) {
+      // 1. Reset logic
+      const currentSettings = await loadSettings();
+      const newSettings = {
+        ...currentSettings,
+        pinEnabled: false, // Disable PIN
+        adminPin: '1234'   // Reset to default
+      };
+      
+      // 2. Save and Update State
+      await saveSettings(newSettings);
+      setPinEnabled(false);
+      setAdminPin('1234');
+      setIsLocked(false); // Unlock screen
+      setUnlockInput('');
+      
+      Alert.alert(t('success'), t('pinResetSuccess'));
+    } else {
+      // 3. Show Instructions (Description Removed for Security)
+      // Now it just says "Enter Master Key" without revealing it is 123456
+      Alert.alert(t('forgotPin'), "Enter Master Key to reset.");
     }
   };
 
   const handleSave = async () => {
     if (!hotelName || !hotelPhone) {
-      Alert.alert("Error", "Hotel Name and Phone Number are required.");
+      Alert.alert(t('error'), "Hotel Name and Phone Number are required.");
       return;
     }
 
@@ -103,17 +131,15 @@ export default function SettingsScreen({ navigation }) {
 
     const success = await saveSettings(newSettings);
     if (success) {
-      Alert.alert("Success", "Settings saved successfully!", [
+      Alert.alert(t('success'), t('savedSuccess'), [
         { text: "OK", onPress: () => navigation.goBack() }
       ]);
     } else {
-      Alert.alert("Error", "Failed to save settings.");
+      Alert.alert(t('error'), "Failed to save settings.");
     }
   };
 
-  // --- DATA MANAGEMENT FUNCTIONS (Moved from Reports) ---
-  
-  // 1. BACKUP
+  // --- DATA MANAGEMENT FUNCTIONS ---
   const handleCloudBackup = async () => {
     try {
       const backupData = await createBackupObject();
@@ -127,12 +153,12 @@ export default function SettingsScreen({ navigation }) {
       if (canShare) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'application/json',
-          dialogTitle: 'Save Backup File',
+          dialogTitle: t('backupDrive'),
           UTI: 'public.json'
         });
         await updateLastBackupTimestamp();
       } else {
-        Alert.alert("Error", "Sharing is not supported.");
+        Alert.alert(t('error'), "Sharing is not supported.");
       }
     } catch (error) {
       console.error(error);
@@ -140,11 +166,10 @@ export default function SettingsScreen({ navigation }) {
     }
   };
 
-  // 2. IMPORT
   const handleImportBackup = async () => {
     try {
-      Alert.alert("Restore Data", "This will OVERWRITE current data. Are you sure?", [
-          { text: "Cancel", style: "cancel" },
+      Alert.alert(t('restoreConfirmTitle'), t('restoreConfirmMessage'), [
+          { text: t('cancel'), style: "cancel" },
           { text: "Pick File", onPress: async () => {
               const result = await DocumentPicker.getDocumentAsync({
                 type: 'application/json', 
@@ -160,18 +185,18 @@ export default function SettingsScreen({ navigation }) {
                 const parsedData = JSON.parse(fileContent);
                 const success = await restoreFullBackup(parsedData);
                 if (success) {
-                  Alert.alert("Success", "Data restored! Please restart the app for best results.");
+                  Alert.alert(t('success'), "Data restored! Please restart the app for best results.");
                 } else {
-                  Alert.alert("Error", "Failed to restore data.");
+                  Alert.alert(t('error'), "Failed to restore data.");
                 }
               } catch (parseError) {
-                Alert.alert("Error", "Corrupted backup file.");
+                Alert.alert(t('error'), "Corrupted backup file.");
               }
           }}
         ]
       );
     } catch (err) {
-      Alert.alert("Error", "Could not pick file.");
+      Alert.alert(t('error'), "Could not pick file.");
     }
   };
 
@@ -193,7 +218,7 @@ export default function SettingsScreen({ navigation }) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
         <Text style={{ fontSize: 50, marginBottom: 20 }}>🔒</Text>
-        <Text style={[styles.header, { color: theme.text }]}>Admin Access Locked</Text>
+        <Text style={[styles.header, { color: theme.text }]}>{t('adminLocked')}</Text>
         <TextInput 
           style={[inputStyle, { width: 200, textAlign: 'center', letterSpacing: 5, fontSize: 24 }]} 
           value={unlockInput} 
@@ -205,7 +230,14 @@ export default function SettingsScreen({ navigation }) {
           placeholderTextColor={theme.textSecondary}
         />
         <TouchableOpacity style={[styles.saveBtn, { backgroundColor: theme.primary, width: 200 }]} onPress={handleUnlock}>
-          <Text style={styles.saveBtnText}>Unlock</Text>
+          <Text style={styles.saveBtnText}>{t('unlock')}</Text>
+        </TouchableOpacity>
+
+        {/* NEW: FORGOT PIN BUTTON */}
+        <TouchableOpacity style={{ marginTop: 20 }} onPress={handleForgotPin}>
+          <Text style={{ color: theme.textSecondary, textDecorationLine: 'underline' }}>
+            {t('forgotPin')}
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -215,30 +247,51 @@ export default function SettingsScreen({ navigation }) {
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       
+      {/* SECTION 0: LANGUAGE SWITCHER */}
+      <View style={cardStyle}>
+        <Text style={[styles.header, { color: theme.primary }]}>{t('language')}</Text>
+        <View style={styles.row}>
+          <View>
+            <Text style={[styles.label, { color: theme.text, marginBottom: 0 }]}>
+              {language === 'en' ? 'English' : 'മലയാളം'}
+            </Text>
+            <Text style={{color: theme.textSecondary, fontSize: 12}}>
+              {language === 'en' ? 'Switch to Malayalam' : 'സ്വിച്ച് ടു ഇംഗ്ലീഷ്'}
+            </Text>
+          </View>
+          <Switch 
+            value={language === 'ml'} 
+            onValueChange={toggleLanguage} 
+            trackColor={{ false: "#767577", true: theme.primary }} 
+            thumbColor={language === 'ml' ? "#fff" : "#f4f3f4"} 
+          />
+        </View>
+      </View>
+
       {/* SECTION 1: Restaurant Details */}
       <View style={cardStyle}>
-        <Text style={[styles.header, { color: theme.primary }]}>🏨 Restaurant Details</Text>
+        <Text style={[styles.header, { color: theme.primary }]}>{t('restaurantDetails')}</Text>
         
-        <Text style={labelStyle}>Restaurant Name</Text>
+        <Text style={labelStyle}>{t('restaurantNameLabel')}</Text>
         <TextInput style={inputStyle} value={hotelName} onChangeText={setHotelName} placeholder="Hotel Name" placeholderTextColor={theme.textSecondary} />
 
-        <Text style={labelStyle}>Phone Number (For Bill)</Text>
+        <Text style={labelStyle}>{t('phoneLabel')}</Text>
         <TextInput style={inputStyle} value={hotelPhone} onChangeText={setHotelPhone} keyboardType="phone-pad" placeholder="Phone" placeholderTextColor={theme.textSecondary} />
 
-        <Text style={labelStyle}>Address</Text>
+        <Text style={labelStyle}>{t('addressLabel')}</Text>
         <TextInput style={[inputStyle, { height: 60 }]} value={hotelAddress} onChangeText={setHotelAddress} multiline placeholder="Address" placeholderTextColor={theme.textSecondary} />
       </View>
 
       {/* SECTION 2: Billing */}
       <View style={cardStyle}>
-        <Text style={[styles.header, { color: theme.primary }]}>🧾 Billing</Text>
+        <Text style={[styles.header, { color: theme.primary }]}>{t('billing')}</Text>
         <View style={styles.row}>
-          <Text style={[styles.label, { color: theme.text, marginBottom: 0 }]}>Enable GST</Text>
+          <Text style={[styles.label, { color: theme.text, marginBottom: 0 }]}>{t('enableGST')}</Text>
           <Switch value={gstEnabled} onValueChange={setGstEnabled} trackColor={{ false: "#767577", true: theme.primary }} thumbColor={gstEnabled ? "#fff" : "#f4f3f4"} />
         </View>
         {gstEnabled && (
           <View style={{ marginTop: 15 }}>
-            <Text style={labelStyle}>GST Percentage (%)</Text>
+            <Text style={labelStyle}>{t('gstPercentageLabel')}</Text>
             <TextInput style={inputStyle} value={gstPercentage} onChangeText={setGstPercentage} keyboardType="numeric" placeholder="5" placeholderTextColor={theme.textSecondary} />
           </View>
         )}
@@ -246,52 +299,52 @@ export default function SettingsScreen({ navigation }) {
 
       {/* SECTION 3: Security */}
       <View style={cardStyle}>
-        <Text style={[styles.header, { color: theme.primary }]}>🛡️ Security</Text>
+        <Text style={[styles.header, { color: theme.primary }]}>{t('security')}</Text>
         <View style={styles.row}>
-          <Text style={[styles.label, { color: theme.text, marginBottom: 0 }]}>Enable PIN Lock</Text>
+          <Text style={[styles.label, { color: theme.text, marginBottom: 0 }]}>{t('enablePIN')}</Text>
           <Switch value={pinEnabled} onValueChange={setPinEnabled} trackColor={{ false: "#767577", true: theme.primary }} thumbColor={pinEnabled ? "#fff" : "#f4f3f4"} />
         </View>
         {pinEnabled && (
           <View style={{ marginTop: 15 }}>
-            <Text style={labelStyle}>Change Admin PIN</Text>
+            <Text style={labelStyle}>{t('changePIN')}</Text>
             <TextInput style={inputStyle} value={adminPin} onChangeText={setAdminPin} keyboardType="numeric" maxLength={6} placeholder="Enter PIN" placeholderTextColor={theme.textSecondary} />
-            <Text style={{color: 'orange', fontSize: 12}}>* Remember this PIN! Default is 1234.</Text>
+            <Text style={{color: 'orange', fontSize: 12}}>{t('rememberPIN')}</Text>
           </View>
         )}
       </View>
 
-      {/* SECTION 4: Data Management (Moved from Reports) */}
+      {/* SECTION 4: Data Management */}
       <View style={cardStyle}>
-        <Text style={[styles.header, { color: theme.primary }]}>☁️ Data Management</Text>
+        <Text style={[styles.header, { color: theme.primary }]}>{t('dataManagement')}</Text>
         <Text style={[styles.label, { color: theme.textSecondary, marginBottom: 15 }]}>
-          Backup your data to Google Drive or WhatsApp to prevent data loss.
+          {t('backupDesc')}
         </Text>
 
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
           <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#4285F4', flex: 1 }]} onPress={handleCloudBackup}>
-            <Text style={styles.cloudBtnText}>⬆ Backup Data</Text>
+            <Text style={styles.cloudBtnText}>{t('backupBtn')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.cloudBtn, { backgroundColor: '#34A853', flex: 1 }]} onPress={handleImportBackup}>
-            <Text style={styles.cloudBtnText}>⬇ Import Data</Text>
+            <Text style={styles.cloudBtnText}>{t('importBtn')}</Text>
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity 
           style={[styles.cloudBtn, { backgroundColor: '#FF7043' }]} 
           onPress={() => {
-            Alert.alert("Reset Data", "This will wipe all orders and menu items. Are you sure?", [
-              { text: "Cancel", style: "cancel" },
+            Alert.alert(t('resetBtn'), t('restoreConfirmMessage'), [
+              { text: t('cancel'), style: "cancel" },
               { text: "Reset Everything", style: "destructive", onPress: async () => { await restoreAllData(); Alert.alert("Done", "App reset to default."); } },
             ]);
           }}
         >
-          <Text style={styles.cloudBtnText}>⚠️ Factory Reset App</Text>
+          <Text style={styles.cloudBtnText}>{t('resetBtn')}</Text>
         </TouchableOpacity>
       </View>
 
       {/* Save Button */}
       <TouchableOpacity style={[styles.saveBtn, { backgroundColor: theme.primary }]} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>💾 Save All Settings</Text>
+        <Text style={styles.saveBtnText}>{t('saveSettings')}</Text>
       </TouchableOpacity>
 
       <View style={{ height: 50 }} />

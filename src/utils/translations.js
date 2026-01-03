@@ -13,6 +13,7 @@ const translations = {
     bill: 'Bill',
     history: 'History',
     reports: 'Reports',
+    settings: 'Settings',
 
     // --- Home Screen ---
     welcomeTo: 'Welcome to',
@@ -108,7 +109,7 @@ const translations = {
     items: 'items',
     deleteBill: 'Delete Bill',
     
-    // --- Reports Screen (New & Merged Keys) ---
+    // --- Reports Screen ---
     salesReport: 'Sales Report',
     salesSummary: 'Sales Summary',
     profitAnalysis: 'Profit Analysis',
@@ -145,8 +146,38 @@ const translations = {
     thisMonth: 'This Month',
     today: 'Today',
 
+    // --- Settings Screen ---
+    restaurantDetails: '🏨 Restaurant Details',
+    restaurantNameLabel: 'Restaurant Name',
+    phoneLabel: 'Phone Number (For Bill)',
+    addressLabel: 'Address',
+    billing: '🧾 Billing',
+    enableGST: 'Enable GST',
+    gstPercentageLabel: 'GST Percentage (%)',
+    security: '🛡️ Security',
+    enablePIN: 'Enable PIN Lock',
+    changePIN: 'Change Admin PIN',
+    rememberPIN: '* Remember this PIN! Default is 1234.',
+    dataManagement: '☁️ Data Management',
+    backupDesc: 'Backup your data to Google Drive or WhatsApp to prevent data loss.',
+    backupBtn: '⬆ Backup Data',
+    importBtn: '⬇ Import Data',
+    resetBtn: '⚠️ Factory Reset App',
+    saveSettings: '💾 Save All Settings',
+    adminLocked: 'Admin Access Locked',
+    unlock: 'Unlock',
+    accessDenied: 'Access Denied',
+    incorrectPIN: 'Incorrect PIN.',
+    savedSuccess: 'Settings saved successfully!',
+    
+    // NEW KEYS FOR FORGOT PIN (ADDED HERE)
+    forgotPin: 'Forgot PIN?',
+    masterKeyInfo: 'To reset, enter the Master Key (123456) in the PIN box above and tap this button again.',
+    pinResetSuccess: 'PIN disabled and reset to default (1234).',
+
     // --- Language ---
-    language: 'Language',
+    language: '🌎 Language',
+    switchLanguage: 'Switch Language',
     english: 'English',
     malayalam: 'മലയാളം',
   },
@@ -163,6 +194,7 @@ const translations = {
     bill: 'ബിൽ',
     history: 'ചരിത്രം',
     reports: 'റിപ്പോർട്ടുകൾ',
+    settings: 'ക്രമീകരണങ്ങൾ',
 
     // --- Home Screen ---
     welcomeTo: 'സ്വാഗതം',
@@ -242,6 +274,7 @@ const translations = {
     date: 'തീയതി',
     time: 'സമയം',
     saveOrderHistory: 'ചരിത്രത്തിൽ സേവ് ചെയ്യുക',
+    closeBusiness: 'ഇന്നത്തെ ബിസിനസ് അവസാനിപ്പിക്കുക',
     
     // --- History Screen ---
     orderHistory: 'ഓർഡർ ചരിത്രം',
@@ -256,13 +289,12 @@ const translations = {
     qty: 'എണ്ണം',
     deleteBill: 'ബിൽ നീക്കം ചെയ്യുക',
 
-    // --- Reports Screen (New & Merged Keys) ---
+    // --- Reports Screen ---
     salesReport: 'വിൽപന റിപ്പോർട്ട്',
     salesSummary: 'വിൽപന ചുരുക്കം',
     profitAnalysis: 'ലാഭ കണക്ക്', 
     dayEndOperations: 'ദിവസാവസാന കണക്കുകൾ', 
     dayEndSubtitle: 'ഇന്നത്തെ കണക്കുകൾ ക്ലോസ് ചെയ്യുക.', 
-    closeBusiness: 'ഇന്നത്തെ ബിസിനസ് അവസാനിപ്പിക്കുക',
     expenseList: 'ചെലവ് പട്ടിക', 
     backupSync: 'ബാക്കപ്പ് & സിങ്ക്',
     backupSubtitle: 'വിവരങ്ങൾ നഷ്ടപ്പെടാതിരിക്കാൻ ക്ലൗഡിൽ സൂക്ഷിക്കുക.', 
@@ -294,8 +326,38 @@ const translations = {
     thisMonth: 'ഈ മാസം',
     today: 'ഇന്ന്',
 
+    // --- Settings Screen ---
+    restaurantDetails: '🏨 ഹോട്ടൽ വിവരങ്ങൾ',
+    restaurantNameLabel: 'ഹോട്ടലിന്റെ പേര്',
+    phoneLabel: 'ഫോൺ നമ്പർ',
+    addressLabel: 'വിലാസം',
+    billing: '🧾 ബില്ലിംഗ്',
+    enableGST: 'ജിഎസ്ടി',
+    gstPercentageLabel: 'ജിഎസ്ടി ശതമാനം (%)',
+    security: '🛡️ സുരക്ഷ',
+    enablePIN: 'പിൻ ലോക്ക്',
+    changePIN: 'പിൻ നമ്പർ മാറ്റുക',
+    rememberPIN: '* പിൻ നമ്പർ ഓർത്തു വെക്കുക. (Default: 1234)',
+    dataManagement: '☁️ ഡാറ്റ മാനേജ്‌മെൻ്റ്',
+    backupDesc: 'ഗൂഗിൾ ഡ്രൈവിലേക്കോ വാട്ട്‌സ്ആപ്പിലേക്കോ ബാക്കപ്പ് ചെയ്യുക.',
+    backupBtn: '⬆ ബാക്കപ്പ് ചെയ്യുക',
+    importBtn: '⬇ ഡാറ്റ വീണ്ടെടുക്കുക',
+    resetBtn: '⚠️ റീസെറ്റ് ചെയ്യുക',
+    saveSettings: '💾 ക്രമീകരണങ്ങൾ സേവ് ചെയ്യുക',
+    adminLocked: 'അഡ്മിൻ ആക്സസ് ലോക്ക് ചെയ്തു',
+    unlock: 'തുറക്കുക',
+    accessDenied: 'പ്രവേശനം നിഷേധിച്ചു',
+    incorrectPIN: 'പിൻ നമ്പർ തെറ്റാണ്',
+    savedSuccess: 'ക്രമീകരണങ്ങൾ സേവ് ചെയ്തു!',
+
+    // NEW KEYS FOR FORGOT PIN (ADDED HERE)
+    forgotPin: 'പിൻ മറന്നോ?',
+    masterKeyInfo: 'റീസെറ്റ് ചെയ്യാൻ, മുകളിലെ ബോക്സിൽ മാസ്റ്റർ കീ (123456) നൽകി ഈ ബട്ടൺ വീണ്ടും അമർത്തുക.',
+    pinResetSuccess: 'പിൻ ലോക്ക് മാറ്റി. പുതിയ പിൻ: 1234',
+
     // --- Language ---
-    language: 'ഭാഷ',
+    language: '🌎 ഭാഷ / Language',
+    switchLanguage: 'ഭാഷ മാറ്റുക',
     english: 'English',
     malayalam: 'മലയാളം',
   },

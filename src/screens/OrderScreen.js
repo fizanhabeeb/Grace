@@ -7,7 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
-import { loadMenu, saveActiveTableOrder, getActiveTableOrder } from '../utils/storage'; // UPDATED IMPORTS
+import { loadMenu, saveActiveTableOrder, getActiveTableOrder } from '../utils/storage';
+// NEW IMPORT: Fuse.js for Fuzzy Search
+import Fuse from 'fuse.js'; 
 
 export default function OrderScreen({ navigation, route }) {
   const { t, getCategoryName } = useLanguage();
@@ -45,18 +47,39 @@ export default function OrderScreen({ navigation, route }) {
     setOrderItems(currentOrder);
   };
 
+  // Debounce the search text to avoid lagging while typing
   useEffect(() => {
     const handler = setTimeout(() => { setDebouncedSearchText(searchText); }, 300);
     return () => clearTimeout(handler);
   }, [searchText]);
 
+  // --- FUSE.JS INTEGRATION START ---
+  // Create the Fuse instance (Memoized to prevent recreation on every render)
+  const fuse = useMemo(() => new Fuse(menuItems, {
+    keys: ['name', 'category'],
+    threshold: 0.3, // 0.0 is exact match, 1.0 is match anything. 0.3 handles typos well.
+  }), [menuItems]);
+
   const filteredMenu = useMemo(() => {
-    return menuItems.filter(item => {
-      const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-      const matchesSearch = item.name.toLowerCase().includes(debouncedSearchText.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [menuItems, selectedCategory, debouncedSearchText]);
+    let results = [];
+
+    // 1. Apply Search Strategy
+    if (debouncedSearchText) {
+      // Use Fuse.js for fuzzy searching (Handles 'bryani' -> 'Biriyani')
+      results = fuse.search(debouncedSearchText).map(result => result.item);
+    } else {
+      // If no search, start with all items
+      results = menuItems;
+    }
+
+    // 2. Apply Category Filter (Preserving existing feature)
+    if (selectedCategory !== 'All') {
+      results = results.filter(item => item.category === selectedCategory);
+    }
+
+    return results;
+  }, [menuItems, selectedCategory, debouncedSearchText, fuse]);
+  // --- FUSE.JS INTEGRATION END ---
 
   const handleItemClick = (menuItem) => {
     if (menuItem.hasVariants && menuItem.variants.length > 0) {
