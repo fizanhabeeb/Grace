@@ -12,7 +12,8 @@ import {
   Platform, 
   TextInput,
   ActivityIndicator,
-  Alert
+  Alert,
+  PermissionsAndroid // <--- REQUIRED FOR ANDROID PERMISSIONS
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,7 +23,7 @@ import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
 import { loadMenu, saveActiveTableOrder, getActiveTableOrder } from '../utils/storage';
 import Fuse from 'fuse.js';
-import Voice from '@react-native-voice/voice'; // NEW IMPORT
+import Voice from '@react-native-voice/voice';
 
 export default function OrderScreen({ navigation, route }) {
   const { t, getCategoryName, language } = useLanguage();
@@ -54,15 +55,25 @@ export default function OrderScreen({ navigation, route }) {
     Voice.onSpeechEnd = () => setIsListening(false);
     Voice.onSpeechResults = onSpeechResults;
     Voice.onSpeechError = (e) => {
-      console.log('Voice Error:', e);
+      console.log('Voice Error Object:', e);
       setIsListening(false);
-      Alert.alert('Voice Error', 'Could not recognize speech. Try again.');
+      
+      // --- DEBUGGING: SHOW EXACT ERROR CODE ---
+      // This helps us identify if it's a Permission (5), Network (6), or No Match (7) error.
+      const errorMsg = e.error ? e.error.message : 'Unknown Error';
+      
+      // Ignore common "No match" errors to avoid spamming the user
+      if (errorMsg.includes('7') || errorMsg.includes('no match')) {
+         // Do nothing, just stopped listening
+      } else {
+         Alert.alert('Voice Error', `Debug Code: ${JSON.stringify(e.error)}\n\nPlease try again.`);
+      }
     };
 
     return () => {
       Voice.destroy().then(Voice.removeAllListeners);
     };
-  }, [menuItems, orderItems]); // Re-bind if menu/order changes to ensure parser has latest data
+  }, [menuItems, orderItems]); 
 
   useFocusEffect(
     useCallback(() => {
@@ -104,12 +115,37 @@ export default function OrderScreen({ navigation, route }) {
   
   const startListening = async () => {
     try {
+      // 1. Explicitly ask for Android Permission
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: "Microphone Permission",
+            message: "We need access to your microphone to take voice orders.",
+            buttonNeutral: "Ask Me Later",
+            buttonNegative: "Cancel",
+            buttonPositive: "OK"
+          }
+        );
+        
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          Alert.alert("Permission Denied", "Voice ordering cannot work without microphone access.");
+          return;
+        }
+      }
+
+      // 2. Start Listening
       setIsListening(true);
-      // Determine locale based on app language setting
+      
+      // Use English (India) or Malayalam (India) based on app language
+      // Fallback to 'en-US' if needed for testing
       const locale = language === 'ml' ? 'ml-IN' : 'en-IN'; 
+      
       await Voice.start(locale);
     } catch (e) {
       console.error(e);
+      setIsListening(false);
+      Alert.alert("Error", "Could not start microphone. Check internet connection.");
     }
   };
 
@@ -130,49 +166,37 @@ export default function OrderScreen({ navigation, route }) {
     stopListening();
   };
 
-  // --- INTELLIGENT VOICE PARSER (English & Malayalam) ---
+  // --- INTELLIGENT VOICE PARSER ---
   const processVoiceCommand = async (text) => {
-    // 1. Dictionary for Number Words
     const numberMap = {
-      // English
       'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 
       'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
-      // Malayalam
       'ഒന്ന്': 1, 'രണ്ട്': 2, 'മൂന്ന്': 3, 'നാല്': 4, 'അഞ്ച്': 5,
       'ആറ്': 6, 'ഏഴ്': 7, 'എട്ട്': 8, 'ഒമ്പത്': 9, 'പത്ത്': 10,
-      'ഒരു': 1, // Common variation "Oru"
+      'ഒരു': 1, 
     };
 
-    // 2. Normalize text: lowercase and replace number-words with digits
     let normalized = text.toLowerCase();
     Object.keys(numberMap).forEach(key => {
-      // Replace whole words only
       normalized = normalized.replace(new RegExp(`\\b${key}\\b`, 'g'), numberMap[key]);
     });
 
-    // 3. Split by common separators (and, comma, pinne - Malayalam 'then')
+    // Split by common separators (English "and", Malayalam "pinne", Comma)
     const segments = normalized.split(/,| and | പിന്നെ | with /);
-
     let itemsAdded = 0;
     const newItemsToAdd = [];
 
-    // 4. Analyze each segment (e.g., "2 chicken biriyani")
     for (const segment of segments) {
       const trimmed = segment.trim();
       if (!trimmed) continue;
 
-      // Extract number if present (e.g., "2")
       const numberMatch = trimmed.match(/(\d+)/);
       const quantity = numberMatch ? parseInt(numberMatch[0]) : 1;
-
-      // Remove the number to get the item name
       const query = trimmed.replace(/\d+/, '').trim();
 
       if (query.length > 2) {
-        // Use Fuse.js to find the best match in the menu
         const results = fuse.search(query);
-        
-        // Strict check: Must be a good match (score < 0.4)
+        // Ensure strict matching to avoid wrong items
         if (results.length > 0 && results[0].score < 0.4) {
           const match = results[0].item;
           newItemsToAdd.push({ item: match, qty: quantity });
@@ -182,16 +206,9 @@ export default function OrderScreen({ navigation, route }) {
     }
 
     if (itemsAdded > 0) {
-      // Add all found items to order
       let currentOrderList = [...orderItems]; 
       
-      // We need to fetch fresh state logic here usually, but since we are inside component, 
-      // we must rely on the 'orderItems' state being relatively fresh or use functional update.
-      // However, for bulk updates, let's construct the new array properly.
-      
       for (const { item, qty } of newItemsToAdd) {
-        // Handle Variants: If item has variants, we can't auto-add (show alert or pick default)
-        // For simplicity, we skip variant items in voice mode or add base price
         if (item.hasVariants) {
            Alert.alert('Variant Required', `Please manually select variant for ${item.name}`);
            continue; 
@@ -223,7 +240,6 @@ export default function OrderScreen({ navigation, route }) {
   };
 
   // --- EXISTING ORDER LOGIC ---
-
   const handleItemClick = (menuItem) => {
     if (menuItem.hasVariants && menuItem.variants.length > 0) {
       setSelectedItem(menuItem);
@@ -339,7 +355,7 @@ export default function OrderScreen({ navigation, route }) {
                 )}
             </View>
 
-            {/* VOICE BUTTON (NEW) */}
+            {/* VOICE BUTTON */}
             <TouchableOpacity 
                 onPress={isListening ? stopListening : startListening}
                 style={[styles.voiceBtn, { backgroundColor: isListening ? '#ff4444' : theme.primary }]}
@@ -461,7 +477,6 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   variantOption: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1 },
   closeBtn: { marginTop: 15, alignItems: 'center', padding: 10 },
-  // NEW STYLE
   voiceBtn: {
     width: 40,
     height: 40,
