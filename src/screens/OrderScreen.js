@@ -20,7 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
-import { loadMenu, saveActiveTableOrder, getActiveTableOrder } from '../utils/storage';
+import { loadMenu, saveActiveTableOrder, getActiveTableOrder, loadCategories } from '../utils/storage';
 import Fuse from 'fuse.js';
 
 export default function OrderScreen({ navigation, route }) {
@@ -33,13 +33,13 @@ export default function OrderScreen({ navigation, route }) {
   
   const [menuItems, setMenuItems] = useState([]);
   const [orderItems, setOrderItems] = useState([]);
+  const [categories, setCategories] = useState(['All']); // Dynamic
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
   const [variantModalVisible, setVariantModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
-  const categories = ['All', 'Breakfast', 'Rice', 'Curry', 'Snacks', 'Beverages'];
   const safeBottom = Platform.OS === 'ios' ? insets.bottom : 10;
   const orderBarHeight = isLandscape ? 120 : 180;
   const bottomPadding = orderItems.length > 0 ? orderBarHeight + safeBottom + 20 : 20;
@@ -53,6 +53,8 @@ export default function OrderScreen({ navigation, route }) {
   const loadData = async () => {
     const menu = await loadMenu();
     setMenuItems(menu);
+    const cats = await loadCategories();
+    setCategories(cats);
     const currentOrder = await getActiveTableOrder(tableNo);
     setOrderItems(currentOrder);
   };
@@ -305,5 +307,13 @@ const styles = StyleSheet.create({
   variantModalContent: { borderRadius: 20, padding: 20, width: '85%' },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   variantOption: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1 },
-  closeBtn: { marginTop: 15, alignItems: 'center', padding: 10 }
+  closeBtn: { marginTop: 15, alignItems: 'center', padding: 10 },
+  voiceBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 3
+  }
 });

@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
-import { loadMenu, saveMenu } from '../utils/storage';
+import { loadMenu, saveMenu, loadCategories, saveCategories, getDefaultCategories } from '../utils/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,16 +35,20 @@ export default function MenuScreen() {
   const { isLandscape, numColumns, cardWidth } = useOrientation();
 
   const [menuItems, setMenuItems] = useState([]);
+  const [categories, setCategories] = useState(['All']); // Dynamic Categories
+  
   const [modalVisible, setModalVisible] = useState(false);
   const [variantModalVisible, setVariantModalVisible] = useState(false);
+  const [catManagerVisible, setCatManagerVisible] = useState(false); // Category Manager Modal
+
   const [editingItem, setEditingItem] = useState(null);
   const [editingVariant, setEditingVariant] = useState(null);
   const [editingVariantIndex, setEditingVariantIndex] = useState(-1);
   const [selectedCategory, setSelectedCategory] = useState('All');
   
   // --- DEBOUNCE STATE ---
-  const [searchText, setSearchText] = useState(''); // What user types
-  const [debouncedSearchText, setDebouncedSearchText] = useState(''); // What we filter with
+  const [searchText, setSearchText] = useState('');
+  const [debouncedSearchText, setDebouncedSearchText] = useState('');
 
   // Form State
   const [itemName, setItemName] = useState('');
@@ -54,38 +58,36 @@ export default function MenuScreen() {
   const [hasVariants, setHasVariants] = useState(false);
   const [variants, setVariants] = useState([]);
 
+  // Category Manager State
+  const [newCatName, setNewCatName] = useState('');
+
   // Variant Form State
   const [variantName, setVariantName] = useState('');
   const [variantPrice, setVariantPrice] = useState('');
 
-  const categories = ['All', 'Breakfast', 'Rice', 'Curry', 'Snacks', 'Beverages'];
   const safeBottom = Platform.OS === 'ios' ? insets.bottom : 10;
   const bottomPadding = 100 + safeBottom;
 
   useFocusEffect(
     useCallback(() => {
-      loadMenuItems();
+      loadData();
     }, [])
   );
 
-  const loadMenuItems = async () => {
+  const loadData = async () => {
     const items = await loadMenu();
     setMenuItems(items);
+    const cats = await loadCategories();
+    setCategories(cats);
   };
 
-  // --- DEBOUNCE EFFECT ---
-  // Updates the filter text only after the user stops typing for 300ms
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearchText(searchText);
     }, 300);
-
-    return () => {
-      clearTimeout(handler);
-    };
+    return () => clearTimeout(handler);
   }, [searchText]);
 
-  // --- FILTERING LOGIC (Uses debouncedSearchText) ---
   const filteredMenu = useMemo(() => {
     return menuItems.filter(item => {
       const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
@@ -94,7 +96,34 @@ export default function MenuScreen() {
     });
   }, [menuItems, selectedCategory, debouncedSearchText]);
 
-  // --- IMAGE LOGIC (File System) ---
+  // --- CATEGORY MANAGEMENT ---
+  const addCategory = async () => {
+    if (!newCatName.trim()) return;
+    if (categories.includes(newCatName.trim())) {
+      Alert.alert('Error', 'Category already exists');
+      return;
+    }
+    const updatedCats = [...categories, newCatName.trim()];
+    setCategories(updatedCats);
+    await saveCategories(updatedCats);
+    setNewCatName('');
+  };
+
+  const removeCategory = async (catToDelete) => {
+    if (catToDelete === 'All') return; // Protect 'All'
+    Alert.alert('Delete Category', `Are you sure you want to delete "${catToDelete}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+          const updatedCats = categories.filter(c => c !== catToDelete);
+          setCategories(updatedCats);
+          await saveCategories(updatedCats);
+          // If current selection was deleted, switch to All
+          if (selectedCategory === catToDelete) setSelectedCategory('All');
+      }}
+    ]);
+  };
+
+  // --- IMAGE LOGIC ---
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { Alert.alert('Permission', 'Allow photos access'); return; }
@@ -136,7 +165,10 @@ export default function MenuScreen() {
 
   // --- MODAL CONTROLS ---
   const openAddModal = () => {
-    setEditingItem(null); setItemName(''); setItemPrice(''); setItemCategory('Breakfast');
+    setEditingItem(null); setItemName(''); setItemPrice(''); 
+    // Default to first non-All category
+    const defaultCat = categories.length > 1 ? categories[1] : 'General';
+    setItemCategory(defaultCat);
     setItemImage(null); setHasVariants(false); setVariants([]); setModalVisible(true);
   };
 
@@ -218,18 +250,10 @@ export default function MenuScreen() {
           <TouchableOpacity style={styles.deleteBadge} onPress={() => deleteItem(item)}>
             <Ionicons name="trash" size={12} color="#fff" />
           </TouchableOpacity>
-          {item.hasVariants && item.variants.length > 0 && (
-            <View style={[styles.variantBadge, { backgroundColor: theme.primary }]}>
-              <Text style={styles.variantBadgeText}>{item.variants.length}</Text>
-            </View>
-          )}
         </View>
         <View style={styles.cardInfo}>
           <Text style={[styles.cardName, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
           <Text style={[styles.cardPrice, { color: theme.primary }]}>₹{item.price.toFixed(0)}</Text>
-        </View>
-        <View style={[styles.editIndicator, { backgroundColor: theme.border }]}>
-          <Text style={[styles.editIndicatorText, { color: theme.textSecondary }]}>Tap to edit</Text>
         </View>
       </TouchableOpacity>
     );
@@ -247,7 +271,7 @@ export default function MenuScreen() {
             placeholder={t('enterItemName')}
             placeholderTextColor={theme.textSecondary}
             value={searchText}
-            onChangeText={setSearchText} // Updates immediate state
+            onChangeText={setSearchText} 
           />
           {searchText !== '' && (
             <TouchableOpacity onPress={() => setSearchText('')}>
@@ -257,7 +281,7 @@ export default function MenuScreen() {
         </View>
       </View>
 
-      <View style={{ height: 60 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryContent}>
           {categories.map((category) => (
             <TouchableOpacity
@@ -275,6 +299,13 @@ export default function MenuScreen() {
               </Text>
             </TouchableOpacity>
           ))}
+          {/* EDIT CATEGORIES BUTTON */}
+          <TouchableOpacity 
+             style={[styles.categoryButton, { backgroundColor: theme.inputBackground, borderWidth: 1, borderColor: theme.border, borderStyle: 'dashed' }]}
+             onPress={() => setCatManagerVisible(true)}
+          >
+             <Text style={{ color: theme.primary, fontWeight: 'bold' }}>+ Edit</Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
 
@@ -338,7 +369,8 @@ export default function MenuScreen() {
                   ))}
                 </View>
               </ScrollView>
-
+              
+              {/* REST OF MODAL (VARIANTS, SAVE) */}
               <View style={styles.variantToggle}>
                 <Text style={[styles.inputLabel, { color: theme.text }]}>Has Variants?</Text>
                 <Switch value={hasVariants} onValueChange={setHasVariants} trackColor={{ false: theme.border, true: theme.primary }} />
@@ -350,9 +382,6 @@ export default function MenuScreen() {
                   {variants.map((v, idx) => (
                     <View key={v.id} style={[styles.variantRow, { borderBottomColor: theme.border }]}>
                       <Text style={{ flex: 1, color: theme.text }}>{v.name} - ₹{v.price}</Text>
-                      <TouchableOpacity onPress={() => openVariantModal(v, idx)}>
-                        <Ionicons name="pencil" size={20} color={theme.primary} style={{ marginRight: 15 }} />
-                      </TouchableOpacity>
                       <TouchableOpacity onPress={() => { const u = variants.filter((_, i) => i !== idx); setVariants(u); }}>
                          <Ionicons name="trash" size={20} color="#ff4444" />
                       </TouchableOpacity>
@@ -375,6 +404,45 @@ export default function MenuScreen() {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* CATEGORY MANAGER MODAL (NEW) */}
+      <Modal 
+        visible={catManagerVisible} 
+        animationType="slide" 
+        transparent={true}
+        onRequestClose={() => setCatManagerVisible(false)} // Fix for Android Back Button Crash
+      >
+         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: theme.card, maxHeight: '80%' }]}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Manage Categories</Text>
+                <ScrollView style={{ marginBottom: 20 }}>
+                    {categories.filter(c => c !== 'All').map(cat => (
+                        <View key={cat} style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+                            <Text style={{ color: theme.text, fontSize: 16 }}>{cat}</Text>
+                            <TouchableOpacity onPress={() => removeCategory(cat)}>
+                                <Ionicons name="trash-outline" size={20} color="#ff4444" />
+                            </TouchableOpacity>
+                        </View>
+                    ))}
+                </ScrollView>
+                <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                    <TextInput 
+                        style={[inputStyle, { flex: 1, marginBottom: 0 }]} 
+                        placeholder="New Category" 
+                        placeholderTextColor={theme.textSecondary}
+                        value={newCatName}
+                        onChangeText={setNewCatName}
+                    />
+                    <TouchableOpacity style={{ backgroundColor: theme.primary, padding: 12, borderRadius: 10 }} onPress={addCategory}>
+                        <Ionicons name="add" size={24} color="#fff" />
+                    </TouchableOpacity>
+                </View>
+                <TouchableOpacity style={{ marginTop: 15, alignSelf: 'center' }} onPress={() => setCatManagerVisible(false)}>
+                    <Text style={{ color: theme.primary }}>Done</Text>
+                </TouchableOpacity>
+            </View>
+         </KeyboardAvoidingView>
       </Modal>
 
       {/* VARIANT MODAL */}
@@ -404,7 +472,7 @@ const styles = StyleSheet.create({
   searchBarContainer: { padding: 10, borderBottomWidth: 1 },
   searchWrapper: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, paddingHorizontal: 15, height: 45 },
   searchInput: { flex: 1, fontSize: 15 },
-  categoryContent: { paddingHorizontal: 10, alignItems: 'center' },
+  categoryContent: { paddingHorizontal: 10, alignItems: 'center', height: 60 },
   categoryButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginRight: 8 },
   categoryText: { fontWeight: '600' },
   itemCount: { paddingHorizontal: 15, paddingVertical: 8, fontSize: 12 },
@@ -413,13 +481,9 @@ const styles = StyleSheet.create({
   cardImage: { width: '100%', resizeMode: 'cover' },
   cardPlaceholder: { width: '100%', justifyContent: 'center', alignItems: 'center' },
   deleteBadge: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(255,0,0,0.7)', borderRadius: 12, width: 24, height: 24, justifyContent: 'center', alignItems: 'center' },
-  variantBadge: { position: 'absolute', top: 5, left: 5, borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center' },
-  variantBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
   cardInfo: { padding: 10 },
   cardName: { fontSize: 14, fontWeight: 'bold' },
   cardPrice: { fontWeight: 'bold', marginTop: 2 },
-  editIndicator: { padding: 5, alignItems: 'center' },
-  editIndicatorText: { fontSize: 10 },
   addButtonContainer: { position: 'absolute', left: 20, right: 20 },
   addButton: { padding: 16, borderRadius: 12, alignItems: 'center', elevation: 5 },
   addButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },

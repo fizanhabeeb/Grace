@@ -1,5 +1,5 @@
 // src/utils/storage.js
-// Central storage: menu, orders, settings, expenses, backup tracking
+// Central storage: menu, orders, settings, expenses, backup tracking, categories
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -11,6 +11,7 @@ const ACTIVE_ORDERS_KEY = 'hotel_grace_active_orders'; // NEW: For multiple tabl
 const SETTINGS_KEY = 'hotel_grace_settings';
 const EXPENSES_KEY = 'hotel_grace_expenses';
 const LAST_BACKUP_KEY = 'hotel_grace_last_backup';
+const CATEGORIES_KEY = 'hotel_grace_categories'; // <--- NEW KEY ADDED
 
 // ============ SETTINGS ============
 
@@ -55,6 +56,28 @@ export const updateSetting = async (key, value) => {
   } catch (error) {
     console.log('Error updating setting:', error);
     return null;
+  }
+};
+
+// ============ CATEGORIES (NEW FEATURE ADDED) ============
+
+export const getDefaultCategories = () => ['All', 'Breakfast', 'Rice', 'Curry', 'Snacks', 'Beverages'];
+
+export const saveCategories = async (categories) => {
+  try {
+    await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+export const loadCategories = async () => {
+  try {
+    const data = await AsyncStorage.getItem(CATEGORIES_KEY);
+    return data ? JSON.parse(data) : getDefaultCategories();
+  } catch (error) {
+    return getDefaultCategories();
   }
 };
 
@@ -193,7 +216,7 @@ export const resetMenuToDefault = async () => {
   }
 };
 
-// ============ NEW: ACTIVE ORDERS (MULTI-TABLE) ============
+// ============ ACTIVE ORDERS (MULTI-TABLE) ============
 
 // Get all active tables: { "1": [items], "5": [items] }
 export const getAllActiveOrders = async () => {
@@ -410,11 +433,12 @@ export const clearExpenses = async () => {
 
 export const createBackupObject = async () => {
   try {
-    const [menu, orders, expenses, settings] = await Promise.all([
+    const [menu, orders, expenses, settings, categories] = await Promise.all([
       loadMenu(),
       loadOrderHistory(true), // Full history for backup
       loadExpenses(),
       loadSettings(),
+      loadCategories(), // Include categories in backup
     ]);
     return {
       version: 1,
@@ -423,6 +447,7 @@ export const createBackupObject = async () => {
       orders,
       expenses,
       settings,
+      categories,
     };
   } catch (error) {
     throw error;
@@ -454,6 +479,11 @@ export const restoreFullBackup = async (backupData) => {
     // 4. Restore Settings
     if (backupData.settings) {
         pairs.push([SETTINGS_KEY, JSON.stringify(backupData.settings)]);
+    }
+
+    // 5. Restore Categories (ADDED)
+    if (backupData.categories) {
+        pairs.push([CATEGORIES_KEY, JSON.stringify(backupData.categories)]);
     }
 
     if (pairs.length > 0) {
