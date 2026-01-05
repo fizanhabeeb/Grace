@@ -22,6 +22,7 @@ import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
 import { loadMenu, saveActiveTableOrder, getActiveTableOrder, loadCategories } from '../utils/storage';
 import Fuse from 'fuse.js';
+import * as Print from 'expo-print'; // <--- ADDED IMPORT
 
 export default function OrderScreen({ navigation, route }) {
   const { t, getCategoryName } = useLanguage();
@@ -81,6 +82,56 @@ export default function OrderScreen({ navigation, route }) {
     }
     return results;
   }, [menuItems, selectedCategory, debouncedSearchText, fuse]);
+
+  // --- KOT PRINT LOGIC (NEW FEATURE) ---
+  const handlePrintKOT = async () => {
+    if (orderItems.length === 0) {
+        Alert.alert('Empty', 'No items to print KOT.');
+        return;
+    }
+
+    const date = new Date().toLocaleDateString('en-IN');
+    const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+    const itemsHTML = orderItems.map((item, index) => `
+        <tr>
+            <td style="font-size: 14px; padding: 5px 0;">${index + 1}. ${item.name}</td>
+            <td style="text-align: right; font-weight: bold; font-size: 16px; padding: 5px 0;">x ${item.quantity}</td>
+        </tr>
+    `).join('');
+
+    const html = `
+        <html>
+        <body style="font-family: monospace; width: 300px; padding: 5px;">
+            <div style="text-align: center; border-bottom: 2px dashed black; padding-bottom: 10px; margin-bottom: 10px;">
+                <h2 style="margin: 0;">KOT</h2>
+                <h3 style="margin: 5px 0;">TABLE: ${tableNo}</h3>
+                <p style="margin: 0; font-size: 12px;">${date} | ${time}</p>
+            </div>
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid black;">
+                        <th style="text-align: left; padding-bottom: 5px;">ITEM</th>
+                        <th style="text-align: right; padding-bottom: 5px;">QTY</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${itemsHTML}
+                </tbody>
+            </table>
+            <div style="border-top: 2px dashed black; margin-top: 15px; padding-top: 5px; text-align: center;">
+                <p style="margin: 0; font-size: 12px;">Kitchen Copy</p>
+            </div>
+        </body>
+        </html>
+    `;
+
+    try {
+        await Print.printAsync({ html });
+    } catch (e) {
+        Alert.alert('Error', 'Could not print KOT');
+    }
+  };
 
   // --- ORDER LOGIC ---
   const handleItemClick = (menuItem) => {
@@ -227,10 +278,12 @@ export default function OrderScreen({ navigation, route }) {
         ListEmptyComponent={<Text style={[styles.emptyText, { color: theme.textSecondary }]}>{debouncedSearchText ? "No matches found" : t('noItemsAvailable')}</Text>}
       />
 
-      {/* Cart Summary Bar */}
+      {/* Cart Summary Bar (UPDATED WITH KOT BUTTON) */}
       {orderItems.length > 0 && (
         <View style={[styles.orderBar, { paddingBottom: safeBottom + 10, backgroundColor: theme.card, borderColor: theme.border }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+          
+          {/* Scrollable Items List */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: 10 }}>
             {orderItems.map(item => (
               <View key={item.orderId} style={[styles.cartItem, { backgroundColor: theme.inputBackground }]}>
                 <Text style={[styles.cartItemName, { color: theme.text }]}>{item.name} x{item.quantity}</Text>
@@ -241,12 +294,24 @@ export default function OrderScreen({ navigation, route }) {
               </View>
             ))}
           </ScrollView>
-          <TouchableOpacity 
-            style={[styles.billButton, { backgroundColor: theme.primary }]} 
-            onPress={() => navigation.navigate('Bill', { tableNo: tableNo })}
-          >
-            <Text style={styles.billButtonText}>{t('viewBillArrow')} (₹{orderItems.reduce((s, i) => s + (i.price * i.quantity), 0).toFixed(2)})</Text>
-          </TouchableOpacity>
+
+          {/* Action Buttons Row */}
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity 
+                style={[styles.billButton, { backgroundColor: '#FF9800', flex: 1 }]} // Orange KOT Button
+                onPress={handlePrintKOT}
+            >
+                <Text style={styles.billButtonText}>🖨️ Print KOT</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+                style={[styles.billButton, { backgroundColor: theme.primary, flex: 1.5 }]} // Green Bill Button
+                onPress={() => navigation.navigate('Bill', { tableNo: tableNo })}
+            >
+                <Text style={styles.billButtonText}>{t('viewBillArrow')} (₹{orderItems.reduce((s, i) => s + (i.price * i.quantity), 0).toFixed(2)})</Text>
+            </TouchableOpacity>
+          </View>
+
         </View>
       )}
 
@@ -300,20 +365,12 @@ const styles = StyleSheet.create({
   cartItem: { padding: 8, borderRadius: 8, marginRight: 10, flexDirection: 'row', alignItems: 'center' },
   cartItemName: { marginRight: 8, fontSize: 12 },
   smallBtn: { padding: 5, borderRadius: 5, marginLeft: 5 },
-  billButton: { padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 10 },
-  billButtonText: { color: '#fff', fontWeight: 'bold' },
+  billButton: { padding: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  billButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   emptyText: { textAlign: 'center', marginTop: 50 },
   variantModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   variantModalContent: { borderRadius: 20, padding: 20, width: '85%' },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   variantOption: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1 },
-  closeBtn: { marginTop: 15, alignItems: 'center', padding: 10 },
-  voiceBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 3
-  }
+  closeBtn: { marginTop: 15, alignItems: 'center', padding: 10 }
 });
