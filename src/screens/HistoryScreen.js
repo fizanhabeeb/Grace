@@ -10,7 +10,7 @@ import {
   Modal,
   ScrollView,
   Platform,
-  Share, // <--- Ensures Share is imported
+  Share,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,7 +18,15 @@ import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import { loadOrderHistory, clearOrderHistory, removeOrderFromHistory, loadSettings } from '../utils/storage';
 import { exportSalesToLocalCsv } from '../utils/exportToCsv';
-import { safeDate, formatDateForDisplay, formatTimeForDisplay, isToday } from '../utils/dateHelpers';
+import { 
+  safeDate, 
+  formatDateForDisplay, 
+  formatTimeForDisplay, 
+  isToday, 
+  getLast7Days, 
+  formatDayLabel, 
+  isSameDay 
+} from '../utils/dateHelpers';
 
 export default function HistoryScreen() {
   const { t } = useLanguage();
@@ -28,7 +36,10 @@ export default function HistoryScreen() {
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [filterDate, setFilterDate] = useState('all'); 
+  
+  // Filters
+  const [filterDate, setFilterDate] = useState('all'); // 'all', 'today', 'week', 'month', 'year'
+  const [selectedDayInWeek, setSelectedDayInWeek] = useState(null); // For specific day selection
 
   const bottomPadding = Platform.OS === 'ios'
     ? insets.bottom + 80
@@ -47,20 +58,41 @@ export default function HistoryScreen() {
   };
 
   const getFilteredOrders = () => {
+    const now = new Date();
+    
+    // Time boundaries
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
+    
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
 
+    let filtered = orders;
+
+    // 1. Primary Filter
     switch (filterDate) {
       case 'today':
-        return orders.filter((order) => isToday(order.date));
+        filtered = orders.filter((order) => isToday(order.date));
+        break;
       case 'week':
-        return orders.filter((order) => {
-          const d = safeDate(order.date);
-          return d >= weekAgo;
-        });
+        filtered = orders.filter((order) => safeDate(order.date) >= weekAgo);
+        break;
+      case 'month':
+        filtered = orders.filter((order) => safeDate(order.date) >= startOfMonth);
+        break;
+      case 'year':
+        filtered = orders.filter((order) => safeDate(order.date) >= startOfYear);
+        break;
       default:
-        return orders;
+        filtered = orders;
     }
+
+    // 2. Secondary Filter (Specific Day in Week)
+    if (filterDate === 'week' && selectedDayInWeek) {
+        filtered = filtered.filter(order => isSameDay(order.date, selectedDayInWeek));
+    }
+
+    return filtered;
   };
 
   const calculateTotalSales = () => {
@@ -106,22 +138,16 @@ export default function HistoryScreen() {
     );
   };
 
-  // --- MODIFIED: SHARE BILL EXACTLY LIKE IMAGE ---
   const handleShareBill = async (order) => {
     try {
       const settings = await loadSettings();
       const hotelName = settings.hotelName || 'HOTEL GRACE';
-      // Use the phone number from settings, or fallback to the one in your image
       const hotelPhone = settings.hotelPhone || '+91 9747640102'; 
       
-      // Helper to format dates and times
       const dateObj = safeDate(order.date);
-      // Assuming formatDateForDisplay returns DD/MM/YYYY
       const dateStr = formatDateForDisplay(dateObj); 
       const timeStr = formatTimeForDisplay(dateObj);
       
-      // 1. FORMATTING HELPERS
-      // Centers text in a 32-character wide line
       const center = (str) => {
         const width = 32;
         if (str.length >= width) return str;
@@ -129,97 +155,63 @@ export default function HistoryScreen() {
         return ' '.repeat(leftPadding) + str;
       };
 
-      // Formats a row: SN(2) Item(13) Qty(3) Rate(6) Amt(6)
-      // Total width: 32 characters to fit mobile screens perfectly
       const formatRow = (sn, item, qty, rate, amt) => {
         const snStr = sn.toString().padEnd(2, ' ');
-        // Truncate item name to 13 chars so lines don't break
         const itemStr = item.substring(0, 13).padEnd(13, ' ');
         const qtyStr = qty.toString().padStart(3, ' ');
         const rateStr = rate.toString().padStart(6, ' ');
-        const amtStr = amt.toString().padStart(6, ' '); // slightly tighter to fit 32
-        
+        const amtStr = amt.toString().padStart(6, ' ');
         return `${snStr} ${itemStr}${qtyStr}${rateStr} ${amtStr}`;
       };
 
       const dashedLine = '--------------------------------';
       const doubleLine = '================================';
 
-      // 2. CONSTRUCT THE BILL STRING
-      let bill = "";
-      
-      // Start WhatsApp Monospace Block
-      bill += "```\n"; 
-      
-      // Header
+      let bill = "```\n"; 
       bill += center(hotelName) + "\n";
       bill += center(`Ph: ${hotelPhone}`) + "\n";
       bill += center("TAX INVOICE") + "\n";
       bill += dashedLine + "\n";
       
-      // Meta Data (Bill No & Date)
       const billLabel = `Bill: ${order.billNumber}`;
       const dateLabel = `Date: ${dateStr}`;
-      // Calculate space between to justify left/right
       const space1 = 32 - billLabel.length - dateLabel.length;
       bill += `${billLabel}${' '.repeat(Math.max(0, space1))}${dateLabel}\n`;
 
-      // Meta Data (Table & Time)
       const tableLabel = `Table: ${order.tableNumber || '-'}`;
       const timeLabel = `Time: ${timeStr}`;
       const space2 = 32 - tableLabel.length - timeLabel.length;
       bill += `${tableLabel}${' '.repeat(Math.max(0, space2))}${timeLabel}\n`;
       
       bill += dashedLine + "\n";
-      
-      // Columns Header
-      // Matches the spacing of formatRow
       bill += "SN ITEM          QTY    RT    AMT\n"; 
       bill += dashedLine + "\n";
       
-      // Items Loop
       order.items.forEach((item, index) => {
         const total = item.quantity * item.price;
-        bill += formatRow(
-          index + 1,
-          item.name,
-          item.quantity,
-          item.price, // Keep as integer if possible like image
-          total
-        ) + "\n";
+        bill += formatRow(index + 1, item.name, item.quantity, item.price, total) + "\n";
       });
       
       bill += dashedLine + "\n";
       
-      // Subtotal (Right Aligned)
       const finalTotal = order.grandTotal || order.total || 0;
       const subLabel = "Subtotal: ";
-      const subValue = finalTotal.toFixed(2); // "45.00"
+      const subValue = finalTotal.toFixed(2);
       bill += (subLabel + subValue).padStart(32, ' ') + "\n";
       
       bill += doubleLine + "\n";
       
-      // Grand Total
       const grandLabel = "GRAND TOTAL:";
-      // Logic: If whole number show "Rs.45", else "Rs.45.50"
       const isWhole = finalTotal % 1 === 0;
       const grandValue = `Rs.${isWhole ? finalTotal : finalTotal.toFixed(2)}`;
-      
       const space3 = 32 - grandLabel.length - grandValue.length;
       bill += `${grandLabel}${' '.repeat(Math.max(0, space3))}${grandValue}\n`;
       
       bill += doubleLine + "\n";
-      
-      // Footer
       bill += center("Thank You! Visit Again") + "\n";
-      
-      // End WhatsApp Monospace Block
       bill += "```";
 
-      // 3. SHARE
-      await Share.share({
-        message: bill,
-      });
+      await Share.share({ message: bill });
 
     } catch (error) {
       console.error(error);
@@ -234,7 +226,7 @@ export default function HistoryScreen() {
       Alert.alert('No data', 'No orders for this period to export.');
       return;
     }
-    const periodLabel = filterDate === 'today' ? 'today' : filterDate === 'week' ? 'week' : 'all';
+    const periodLabel = selectedDayInWeek ? 'custom_day' : filterDate;
     await exportSalesToLocalCsv({
       period: periodLabel,
       orders: filteredOrders,
@@ -287,31 +279,71 @@ export default function HistoryScreen() {
         </View>
       </View>
 
-      {/* Filters */}
-      <View style={styles.filterContainer}>
-        {['all', 'today', 'week'].map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[
-              styles.filterButton, 
-              filterDate === f ? { backgroundColor: theme.primary } : { backgroundColor: theme.card }
-            ]}
-            onPress={() => setFilterDate(f)}
-          >
-            <Text style={[
-              styles.filterText, 
-              filterDate === f ? { color: '#fff' } : { color: theme.text }
-            ]}>
-              {t(f)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      {/* Main Filters (Horizontal Scroll) */}
+      <View style={styles.filterWrapper}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.filterContainer}
+        >
+          {['all', 'today', 'week', 'month', 'year'].map((f) => (
+            <TouchableOpacity
+              key={f}
+              style={[
+                styles.filterButton, 
+                filterDate === f ? { backgroundColor: theme.primary } : { backgroundColor: theme.card }
+              ]}
+              onPress={() => {
+                  setFilterDate(f);
+                  setSelectedDayInWeek(null); // Reset specific day when main filter changes
+              }}
+            >
+              <Text style={[
+                styles.filterText, 
+                filterDate === f ? { color: '#fff' } : { color: theme.text }
+              ]}>
+                {t(f) || f.charAt(0).toUpperCase() + f.slice(1)} 
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
+
+      {/* NEW: Specific Day Selector (Visible only if 'Week' is selected) */}
+      {filterDate === 'week' && (
+        <View style={styles.daySelectorWrapper}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.daySelectorContainer}>
+                {/* 'All Week' Button */}
+                <TouchableOpacity 
+                    style={[styles.dayButton, !selectedDayInWeek ? { backgroundColor: theme.text, borderColor: theme.text } : { borderColor: theme.border, borderWidth: 1 }]}
+                    onPress={() => setSelectedDayInWeek(null)}
+                >
+                    <Text style={[styles.dayButtonText, !selectedDayInWeek ? { color: theme.background } : { color: theme.text }]}>All</Text>
+                </TouchableOpacity>
+
+                {/* Last 7 Days */}
+                {getLast7Days().map((date, idx) => {
+                    const isSelected = selectedDayInWeek && isSameDay(date, selectedDayInWeek);
+                    return (
+                        <TouchableOpacity 
+                            key={idx}
+                            style={[styles.dayButton, isSelected ? { backgroundColor: theme.primary } : { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }]}
+                            onPress={() => setSelectedDayInWeek(date)}
+                        >
+                            <Text style={[styles.dayButtonText, isSelected ? { color: '#fff' } : { color: theme.text }]}>
+                                {formatDayLabel(date)}
+                            </Text>
+                        </TouchableOpacity>
+                    );
+                })}
+            </ScrollView>
+        </View>
+      )}
 
       {/* Export Button */}
       <View style={styles.exportContainer}>
         <TouchableOpacity style={styles.exportButton} onPress={handleExportToCsv}>
-          <Text style={styles.exportButtonText}>⬆ Export CSV (Offline)</Text>
+          <Text style={styles.exportButtonText}>⬆ Export CSV ({selectedDayInWeek ? 'Day' : filterDate})</Text>
         </TouchableOpacity>
       </View>
 
@@ -354,14 +386,15 @@ export default function HistoryScreen() {
                 <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15}}>
                    <Text style={[styles.modalTitle, { color: theme.primary }]}>{t('bill')} #{selectedOrder.billNumber}</Text>
                    
-                   {/* --- SHARE BUTTON INSIDE MODAL --- */}
-                   <TouchableOpacity onPress={() => handleShareBill(selectedOrder)} style={{marginRight: 15}}>
-                      <Text style={{fontSize: 24}}>📤</Text>
-                   </TouchableOpacity>
+                   <View style={{flexDirection: 'row'}}>
+                     <TouchableOpacity onPress={() => handleShareBill(selectedOrder)} style={{marginRight: 15}}>
+                        <Text style={{fontSize: 24}}>📤</Text>
+                     </TouchableOpacity>
 
-                   <TouchableOpacity onPress={() => handleDeleteBill(selectedOrder.id, selectedOrder.billNumber)}>
-                      <Text style={{fontSize: 24}}>🗑️</Text>
-                   </TouchableOpacity>
+                     <TouchableOpacity onPress={() => handleDeleteBill(selectedOrder.id, selectedOrder.billNumber)}>
+                        <Text style={{fontSize: 24}}>🗑️</Text>
+                     </TouchableOpacity>
+                   </View>
                 </View>
                 
                 <View style={[styles.modalInfo, { backgroundColor: theme.inputBackground }]}>
@@ -416,9 +449,17 @@ const styles = StyleSheet.create({
   summaryCard: { flex: 1, paddingVertical: 18, borderRadius: 12, alignItems: 'center', marginHorizontal: 5, elevation: 2 },
   summaryNumber: { fontSize: 22, fontWeight: 'bold' },
   summaryLabel: { fontSize: 13, marginTop: 4 },
-  filterContainer: { flexDirection: 'row', paddingHorizontal: 12, marginBottom: 10 },
-  filterButton: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, marginRight: 10, elevation: 1 },
+  
+  filterWrapper: { marginBottom: 10, height: 50 },
+  filterContainer: { paddingHorizontal: 12, alignItems: 'center' },
+  filterButton: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, marginRight: 10, elevation: 1, justifyContent: 'center' },
   filterText: { fontWeight: '600', fontSize: 13 },
+
+  daySelectorWrapper: { marginBottom: 10, height: 45 },
+  daySelectorContainer: { paddingHorizontal: 12, alignItems: 'center' },
+  dayButton: { paddingHorizontal: 15, paddingVertical: 6, borderRadius: 15, marginRight: 8, justifyContent: 'center' },
+  dayButtonText: { fontSize: 12, fontWeight: '600' },
+  
   exportContainer: { paddingHorizontal: 12, marginBottom: 5 },
   exportButton: { backgroundColor: '#4CAF50', paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   exportButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },

@@ -21,6 +21,7 @@ import {
   removeExpense
 } from '../utils/storage';
 import { exportSalesToLocalCsv } from '../utils/exportToCsv';
+import { getLast7Days, formatDayLabel, isSameDay, safeDate } from '../utils/dateHelpers'; // <--- Added safeDate
 
 export default function ReportsScreen() {
   const { t } = useLanguage();
@@ -28,6 +29,8 @@ export default function ReportsScreen() {
   const insets = useSafeAreaInsets();
 
   const [period, setPeriod] = useState('today');
+  const [selectedDayInWeek, setSelectedDayInWeek] = useState(null);
+
   const [orders, setOrders] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [searchText, setSearchText] = useState(''); 
@@ -54,20 +57,41 @@ export default function ReportsScreen() {
 
   const filterByPeriod = (dateStr) => {
     if (!dateStr) return false;
+    
+    // 1. Handle 'Today' using string match (Fast & Reliable)
     const today = new Date().toLocaleDateString('en-IN');
     if (period === 'today') return dateStr.includes(today) || dateStr === today;
-    
-    const d = new Date(dateStr);
+
+    // 2. Parse Date Safely (Fix for the bug)
+    const d = safeDate(dateStr);
     if (isNaN(d.getTime())) return false; 
 
+    // 3. Handle 'All'
+    if (period === 'all') return true;
+
+    // 4. Handle Specific Day in Week
+    if (period === 'week' && selectedDayInWeek) {
+        return isSameDay(d, selectedDayInWeek);
+    }
+
+    // 5. Standard Periods
     const now = new Date();
+    // Reset time components for accurate date-only comparison
+    const targetDate = new Date(d);
+    targetDate.setHours(0,0,0,0);
+    const currentDate = new Date(now);
+    currentDate.setHours(0,0,0,0);
+
     if (period === 'week') {
-      const weekAgo = new Date();
-      weekAgo.setDate(now.getDate() - 7);
-      return d >= weekAgo;
+      const weekAgo = new Date(currentDate);
+      weekAgo.setDate(currentDate.getDate() - 7);
+      return targetDate >= weekAgo;
     }
     if (period === 'month') {
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }
+    if (period === 'year') {
+      return d.getFullYear() === now.getFullYear();
     }
     return true;
   };
@@ -85,7 +109,7 @@ export default function ReportsScreen() {
                             e.description.toLowerCase().includes(searchText.toLowerCase());
       return matchesPeriod && matchesSearch;
     });
-  }, [expenses, period, searchText]);
+  }, [expenses, period, searchText, selectedDayInWeek]);
 
   const totalExpenses = round(filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0));
   const profit = round(totalSales - totalExpenses);
@@ -159,19 +183,53 @@ export default function ReportsScreen() {
           )}
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.periodScroll}>
-          {['today', 'week', 'month', 'all'].map((p) => (
+          {['today', 'week', 'month', 'year', 'all'].map((p) => (
             <TouchableOpacity
               key={p}
               style={[styles.periodBtn, period === p ? { backgroundColor: theme.primary } : { backgroundColor: theme.inputBackground }]}
-              onPress={() => setPeriod(p)}
+              onPress={() => {
+                  setPeriod(p);
+                  setSelectedDayInWeek(null);
+              }}
             >
               <Text style={[styles.periodText, period === p ? { color: '#fff' } : { color: theme.text }]}>
-                {t(p === 'all' ? 'allTime' : p === 'week' ? 'thisWeek' : p === 'month' ? 'thisMonth' : 'today')}
+                {t(p === 'all' ? 'allTime' : p === 'week' ? 'thisWeek' : p === 'month' ? 'thisMonth' : p)}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
+
+      {/* NEW: Specific Day Selector (Visible only if 'Week' is selected) */}
+      {period === 'week' && (
+        <View style={styles.daySelectorWrapper}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.daySelectorContainer}>
+                {/* 'All Week' Button */}
+                <TouchableOpacity 
+                    style={[styles.dayButton, !selectedDayInWeek ? { backgroundColor: theme.text, borderColor: theme.text } : { borderColor: theme.border, borderWidth: 1 }]}
+                    onPress={() => setSelectedDayInWeek(null)}
+                >
+                    <Text style={[styles.dayButtonText, !selectedDayInWeek ? { color: theme.background } : { color: theme.text }]}>All</Text>
+                </TouchableOpacity>
+
+                {/* Last 7 Days */}
+                {getLast7Days().map((date, idx) => {
+                    const isSelected = selectedDayInWeek && isSameDay(date, selectedDayInWeek);
+                    return (
+                        <TouchableOpacity 
+                            key={idx}
+                            style={[styles.dayButton, isSelected ? { backgroundColor: theme.primary } : { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }]}
+                            onPress={() => setSelectedDayInWeek(date)}
+                        >
+                            <Text style={[styles.dayButtonText, isSelected ? { color: '#fff' } : { color: theme.text }]}>
+                                {formatDayLabel(date)}
+                            </Text>
+                        </TouchableOpacity>
+                    );
+                })}
+            </ScrollView>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 20 }} showsVerticalScrollIndicator={false}>
         {/* Sales Card */}
@@ -259,6 +317,12 @@ const styles = StyleSheet.create({
   periodScroll: { flexDirection: 'row' },
   periodBtn: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, marginRight: 10 },
   periodText: { fontSize: 12, fontWeight: '600' },
+  
+  daySelectorWrapper: { paddingVertical: 5, borderBottomWidth: 1, borderColor: '#eee' },
+  daySelectorContainer: { paddingHorizontal: 10, alignItems: 'center' },
+  dayButton: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15, marginRight: 8, justifyContent: 'center' },
+  dayButtonText: { fontSize: 12, fontWeight: '600' },
+
   card: { margin: 10, borderRadius: 15, padding: 15, elevation: 2 },
   cardTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 15 },
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
