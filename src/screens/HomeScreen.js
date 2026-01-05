@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import useOrientation from '../utils/useOrientation';
-// IMPORTED clearActiveTableOrder
 import { getTodaysSales, loadOrderHistory, getAllActiveOrders, getTableTotal, clearActiveTableOrder } from '../utils/storage';
 
 export default function HomeScreen({ navigation }) {
@@ -27,7 +26,7 @@ export default function HomeScreen({ navigation }) {
   const { isLandscape, isSmallScreen, isTablet } = useOrientation();
     
   const [todaySales, setTodaySales] = useState({ count: 0, total: 0 });
-  const [activeTables, setActiveTables] = useState([]);
+  const [dashboardTables, setDashboardTables] = useState([]); // Renamed for clarity
   const [recentOrders, setRecentOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -42,22 +41,34 @@ export default function HomeScreen({ navigation }) {
     const history = await loadOrderHistory();
     setRecentOrders(history.slice(0, 5));
 
-    // 3. Active Tables Data
+    // 3. Visual Table Dashboard Data
     const activeOrdersMap = await getAllActiveOrders();
-    const tableList = Object.keys(activeOrdersMap).map(key => ({
-      tableNo: key,
-      items: activeOrdersMap[key],
-      total: getTableTotal(activeOrdersMap[key])
-    }));
+    
+    // Define standard tables (1 to 12)
+    const standardTables = Array.from({ length: 12 }, (_, i) => String(i + 1));
+    
+    // Combine standard tables with any other currently active tables (e.g., "Parcel", "20")
+    const allTableKeys = new Set([...standardTables, ...Object.keys(activeOrdersMap)]);
+    
+    const tableList = Array.from(allTableKeys).map(tableNo => {
+      const items = activeOrdersMap[tableNo] || [];
+      return {
+        tableNo,
+        isOccupied: items.length > 0,
+        itemsCount: items.reduce((s, i) => s + i.quantity, 0),
+        total: getTableTotal(items)
+      };
+    });
 
-    // Sort: Numeric sort if possible, else string
+    // Sort: Numeric sort for numbers, string sort for text
     tableList.sort((a, b) => {
       const numA = parseInt(a.tableNo);
       const numB = parseInt(b.tableNo);
-      return (isNaN(numA) || isNaN(numB)) ? a.tableNo.localeCompare(b.tableNo) : numA - numB;
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.tableNo.localeCompare(b.tableNo);
     });
 
-    setActiveTables(tableList);
+    setDashboardTables(tableList);
   };
 
   useFocusEffect(
@@ -86,7 +97,7 @@ export default function HomeScreen({ navigation }) {
     navigation.navigate('Order', { tableNo: newTableNumber.trim() });
   };
 
-  // NEW: Handle Deletion
+  // Handle Deletion
   const handleDeleteTable = (tableNo) => {
     Alert.alert(
         'Delete Order?',
@@ -168,38 +179,44 @@ export default function HomeScreen({ navigation }) {
         {/* Content */}
         <View style={dynamicStyles.contentContainer}>
           
-          {/* Active Tables Grid */}
+          {/* VISUAL TABLE DASHBOARD */}
           <View style={[styles.card, dynamicStyles.card, { width: '100%' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>🍽️ Active Tables</Text>
-                <TouchableOpacity onPress={handleNewOrder} style={{ backgroundColor: theme.primary, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 }}>
-                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>+ New Order</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>🪑 Table Dashboard</Text>
+                <TouchableOpacity onPress={handleNewOrder} style={{ backgroundColor: theme.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15 }}>
+                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>+ Other</Text>
                 </TouchableOpacity>
             </View>
-            {/* Hint for Deletion */}
-            <Text style={{ color: theme.textSecondary, fontSize: 11, marginBottom: 15, fontStyle: 'italic' }}>
-                {activeTables.length > 0 ? "(Long press a table to delete)" : ""}
-            </Text>
 
-            {activeTables.length === 0 ? (
-                <Text style={{ textAlign: 'center', color: theme.textSecondary, fontStyle: 'italic', padding: 20 }}>No active orders. Click "+ New Order" to start.</Text>
-            ) : (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                    {activeTables.map((table) => (
-                        <TouchableOpacity 
-                            key={table.tableNo}
-                            style={[styles.tableBox, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}
-                            onPress={() => navigation.navigate('Order', { tableNo: table.tableNo })}
-                            onLongPress={() => handleDeleteTable(table.tableNo)} // ADDED LONG PRESS
-                            delayLongPress={500}
-                        >
-                            <Text style={[styles.tableNum, { color: theme.primary }]}>{table.tableNo}</Text>
-                            <Text style={{ color: theme.text, fontSize: 12 }}>Items: {table.items.reduce((s,i)=>s+i.quantity,0)}</Text>
-                            <Text style={{ color: theme.text, fontWeight: 'bold' }}>₹{table.total.toFixed(0)}</Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-            )}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {dashboardTables.map((table) => (
+                    <TouchableOpacity 
+                        key={table.tableNo}
+                        style={[
+                            styles.tableBox, 
+                            { 
+                                backgroundColor: table.isOccupied ? '#ff5252' : '#66bb6a', // Red if occupied, Green if empty
+                                borderColor: table.isOccupied ? '#d32f2f' : '#43a047'
+                            }
+                        ]}
+                        onPress={() => navigation.navigate('Order', { tableNo: table.tableNo })}
+                        onLongPress={() => {
+                            if(table.isOccupied) handleDeleteTable(table.tableNo);
+                        }}
+                        delayLongPress={500}
+                    >
+                        <Text style={[styles.tableNum, { color: '#fff' }]}>{table.tableNo}</Text>
+                        {table.isOccupied ? (
+                            <>
+                                <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11 }}>₹{table.total.toFixed(0)}</Text>
+                                <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10 }}>({table.itemsCount} itm)</Text>
+                            </>
+                        ) : (
+                            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>Empty</Text>
+                        )}
+                    </TouchableOpacity>
+                ))}
+            </View>
           </View>
 
           {/* Today's Summary */}
@@ -278,7 +295,7 @@ export default function HomeScreen({ navigation }) {
                 <Text style={[styles.modalTitle, { color: theme.text }]}>Enter Table Number</Text>
                 <TextInput 
                     style={[styles.input, { color: theme.text, backgroundColor: theme.inputBackground, borderColor: theme.border }]}
-                    placeholder="e.g., 5, T-1, Parcel"
+                    placeholder="e.g., 20, Parcel"
                     placeholderTextColor={theme.textSecondary}
                     value={newTableNumber}
                     onChangeText={setNewTableNumber}
@@ -321,18 +338,18 @@ const styles = StyleSheet.create({
   footer: { padding: 20, alignItems: 'center' },
   footerText: { color: '#999', fontSize: 11 },
   
-  // New Styles for Active Tables
+  // Table Dashboard Styles
   tableBox: {
-      width: '30%',
+      width: '22%', // Roughly 4 columns
       aspectRatio: 1,
-      borderWidth: 1,
-      borderRadius: 10,
+      borderRadius: 12,
       justifyContent: 'center',
       alignItems: 'center',
       marginBottom: 10,
-      marginRight: '3%'
+      borderWidth: 1,
+      elevation: 2
   },
-  tableNum: { fontSize: 24, fontWeight: 'bold', marginBottom: 5 },
+  tableNum: { fontSize: 20, fontWeight: 'bold', marginBottom: 2 },
   
   // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },

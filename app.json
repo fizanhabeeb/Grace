@@ -31,7 +31,9 @@
         "INTERNET"
       ]
     },
-    "plugins": [],
+    "plugins": [
+      "expo-sqlite"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     },

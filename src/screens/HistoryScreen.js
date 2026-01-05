@@ -11,6 +11,7 @@ import {
   ScrollView,
   Platform,
   Share,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,10 +37,11 @@ export default function HistoryScreen() {
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Filters
-  const [filterDate, setFilterDate] = useState('all'); // 'all', 'today', 'week', 'month', 'year'
-  const [selectedDayInWeek, setSelectedDayInWeek] = useState(null); // For specific day selection
+  const [filterDate, setFilterDate] = useState('all');
+  const [selectedDayInWeek, setSelectedDayInWeek] = useState(null);
 
   const bottomPadding = Platform.OS === 'ios'
     ? insets.bottom + 80
@@ -52,9 +54,14 @@ export default function HistoryScreen() {
   );
 
   const loadOrders = async () => {
-    const history = await loadOrderHistory();
-    const sorted = (history || []).sort((a, b) => safeDate(b.date) - safeDate(a.date));
-    setOrders(sorted);
+    setIsLoading(true);
+    try {
+        const history = await loadOrderHistory();
+        const sorted = (history || []).sort((a, b) => safeDate(b.date) - safeDate(a.date));
+        setOrders(sorted);
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   const getFilteredOrders = () => {
@@ -146,7 +153,8 @@ export default function HistoryScreen() {
       
       const dateObj = safeDate(order.date);
       const dateStr = formatDateForDisplay(dateObj); 
-      const timeStr = formatTimeForDisplay(dateObj);
+      // FIX 1: Use the stored time if available
+      const timeStr = order.time || formatTimeForDisplay(dateObj);
       
       const center = (str) => {
         const width = 32;
@@ -184,6 +192,7 @@ export default function HistoryScreen() {
       bill += `${tableLabel}${' '.repeat(Math.max(0, space2))}${timeLabel}\n`;
       
       bill += dashedLine + "\n";
+      
       bill += "SN ITEM          QTY    RT    AMT\n"; 
       bill += dashedLine + "\n";
       
@@ -247,8 +256,9 @@ export default function HistoryScreen() {
         <Text style={[styles.orderAmount, { color: theme.primary }]}>₹{item.grandTotal ? item.grandTotal.toFixed(2) : item.total.toFixed(2)}</Text>
       </View>
       <View style={styles.orderDetails}>
+        {/* FIX 2: Use item.time directly in the list view */}
         <Text style={[styles.orderDate, { color: theme.textSecondary }]}>
-            📅 {formatDateForDisplay(item.date)}  🕐 {formatTimeForDisplay(item.date)}
+            📅 {formatDateForDisplay(item.date)}  🕐 {item.time || formatTimeForDisplay(item.date)}
         </Text>
       </View>
       <View style={styles.orderMeta}>
@@ -260,6 +270,14 @@ export default function HistoryScreen() {
       </View>
     </TouchableOpacity>
   );
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -309,7 +327,7 @@ export default function HistoryScreen() {
         </ScrollView>
       </View>
 
-      {/* NEW: Specific Day Selector (Visible only if 'Week' is selected) */}
+      {/* Specific Day Selector (Visible only if 'Week' is selected) */}
       {filterDate === 'week' && (
         <View style={styles.daySelectorWrapper}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.daySelectorContainer}>
@@ -399,7 +417,9 @@ export default function HistoryScreen() {
                 
                 <View style={[styles.modalInfo, { backgroundColor: theme.inputBackground }]}>
                   <Text style={[styles.modalInfoText, { color: theme.text }]}>📅 {formatDateForDisplay(selectedOrder.date)}</Text>
-                  <Text style={[styles.modalInfoText, { color: theme.text }]}>🕐 {formatTimeForDisplay(selectedOrder.date)}</Text>
+                  
+                  {/* FIX 3: Use selectedOrder.time in modal as well */}
+                  <Text style={[styles.modalInfoText, { color: theme.text }]}>🕐 {selectedOrder.time || formatTimeForDisplay(selectedOrder.date)}</Text>
                   
                   {selectedOrder.tableNumber && <Text style={[styles.modalInfoText, { color: theme.text }]}>🪑 {t('table')}: {selectedOrder.tableNumber}</Text>}
                   {selectedOrder.customerName && <Text style={[styles.modalInfoText, { color: theme.text }]}>👤 {selectedOrder.customerName}</Text>}

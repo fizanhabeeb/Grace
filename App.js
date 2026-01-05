@@ -3,7 +3,7 @@ import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack'; // <--- NEW IMPORT
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TouchableOpacity, Text, View, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { LanguageProvider, useLanguage } from './src/context/LanguageContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext'; 
 
+// Components
+import { ErrorBoundary } from './src/components/ErrorBoundary';
+
+// Database Init
+import { initDatabase } from './src/utils/storage'; // <--- NEW IMPORT
+
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
 import MenuScreen from './src/screens/MenuScreen';
@@ -19,12 +25,12 @@ import OrderScreen from './src/screens/OrderScreen';
 import BillScreen from './src/screens/BillScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
-import SettingsScreen from './src/screens/SettingsScreen'; // <--- NEW IMPORT
+import SettingsScreen from './src/screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator(); // <--- CREATE STACK
+const Stack = createNativeStackNavigator();
 
-// --- 1. THE TAB NAVIGATOR (Your existing menu) ---
+// --- 1. THE TAB NAVIGATOR ---
 function TabNavigator() {
   const { t, language, toggleLanguage } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
@@ -99,20 +105,17 @@ function TabNavigator() {
   );
 }
 
-// --- 2. THE ROOT NAVIGATOR (Handles Tabs + Settings) ---
+// --- 2. THE ROOT NAVIGATOR ---
 function RootNavigator() {
   const { theme } = useTheme();
 
   return (
     <Stack.Navigator>
-      {/* The Main App (Tabs) - Hide Header because Tabs have their own */}
       <Stack.Screen 
         name="MainTabs" 
         component={TabNavigator} 
         options={{ headerShown: false }} 
       />
-      
-      {/* The Settings Screen - Show Header with Theme Colors */}
       <Stack.Screen 
         name="Settings" 
         component={SettingsScreen} 
@@ -134,15 +137,31 @@ function RootNavigator() {
 
 // --- 3. MAIN APP COMPONENT ---
 export default function App() {
+
+  // NEW: Initialize Database on App Launch
+  React.useEffect(() => {
+    const setupDB = async () => {
+      try {
+        await initDatabase();
+        console.log("Database initialized & Migration checked.");
+      } catch (e) {
+        console.error("DB Setup Failed:", e);
+      }
+    };
+    setupDB();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <ThemeProvider>
         <LanguageProvider>
-          <NavigationContainer>
-            <StatusBar style="light" /> 
-            {/* Use RootNavigator instead of TabNavigator */}
-            <RootNavigator /> 
-          </NavigationContainer>
+          {/* WRAP THE NAVIGATION CONTAINER WITH ERROR BOUNDARY */}
+          <ErrorBoundary>
+            <NavigationContainer>
+              <StatusBar style="light" /> 
+              <RootNavigator /> 
+            </NavigationContainer>
+          </ErrorBoundary>
         </LanguageProvider>
       </ThemeProvider>
     </SafeAreaProvider>
