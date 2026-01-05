@@ -2,12 +2,16 @@
   "name": "hotelgracepos",
   "version": "1.0.0",
   "main": "index.js",
+  "homepage": "./",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "postinstall": "jetify"
+    "postinstall": "jetify",
+    "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run web\" \"wait-on http://localhost:8081 && cross-env ELECTRON_START_URL=http://localhost:8081 electron main.js\"",
+    "build:web": "expo export --platform web",
+    "build:windows": "npm run build:web && electron-builder --win"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -32,6 +36,28 @@
   },
   "private": true,
   "devDependencies": {
-    "jetifier": "^2.0.0"
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
+    "jetifier": "^2.0.0",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.hotelgrace.pos",
+    "productName": "Hotel Grace POS",
+    "directories": {
+      "output": "release-builds"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "package.json",
+      "assets/**/*"
+    ]
   }
 }
