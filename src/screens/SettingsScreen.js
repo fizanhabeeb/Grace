@@ -23,8 +23,6 @@ import {
   createBackupObject, 
   restoreFullBackup 
 } from '../utils/storage';
-// Import the reset function from backup utils if available, 
-// otherwise we can implement a simple clear logic here.
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
 import * as FileSystem from 'expo-file-system';
@@ -32,12 +30,12 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 
 export default function SettingsScreen() {
-  const { t, language, toggleLanguage } = useLanguage(); // Added language & toggle
+  const { t, language, toggleLanguage } = useLanguage();
   const { theme } = useTheme();
   
   const [isLoading, setIsLoading] = useState(true);
   const [settings, setSettings] = useState({
-    hotelName: '',
+    hotelName: 'HOTEL GRACE', // Default fallback
     hotelPhone: '',
     hotelAddress: '',
     gstEnabled: false,
@@ -74,7 +72,7 @@ export default function SettingsScreen() {
     }
   };
 
-  // 2. SAVE INDIVIDUAL SETTING IMMEDIATELY (The GST Fix)
+  // 2. SAVE INDIVIDUAL SETTING IMMEDIATELY
   const handleToggleGST = async (value) => {
     setSettings(prev => ({ ...prev, gstEnabled: value }));
     await updateSetting('gstEnabled', value);
@@ -85,7 +83,7 @@ export default function SettingsScreen() {
     Alert.alert(t('success') || 'Success', t('savedSuccess') || 'Settings saved successfully!');
   };
 
-  // 3. UNLOCK LOGIC (Includes Master Key 123456)
+  // 3. UNLOCK LOGIC
   const handleUnlock = () => {
     if (pinInput === settings.adminPin || pinInput === '123456') {
         setIsLocked(false);
@@ -211,7 +209,7 @@ export default function SettingsScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
         
-        {/* --- LANGUAGE SWITCHER (Added Back) --- */}
+        {/* --- LANGUAGE SWITCHER --- */}
         <View style={styles.section}>
             <Text style={[styles.sectionHeader, { color: theme.primary }]}>{t('language')}</Text>
             <View style={styles.row}>
@@ -237,11 +235,13 @@ export default function SettingsScreen() {
           <Text style={[styles.sectionHeader, { color: theme.primary }]}>{t('restaurantDetails')}</Text>
           
           <Text style={[styles.label, { color: theme.textSecondary }]}>{t('restaurantNameLabel')}</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: theme.inputBackground, color: theme.text, borderColor: theme.border }]}
-            value={settings.hotelName}
-            onChangeText={(text) => setSettings({...settings, hotelName: text})}
-          />
+          
+          {/* READ-ONLY HOTEL NAME (THE FEATURE YOU REQUESTED) */}
+          <View style={[styles.input, { backgroundColor: theme.inputBackground, borderColor: theme.border, justifyContent: 'center', opacity: 0.7 }]}>
+            <Text style={{ color: theme.textSecondary, fontWeight: 'bold' }}>
+                {settings.hotelName || 'HOTEL GRACE'} 🔒
+            </Text>
+          </View>
 
           <Text style={[styles.label, { color: theme.textSecondary }]}>{t('phoneLabel')}</Text>
           <TextInput
@@ -331,7 +331,7 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* --- FACTORY RESET BUTTON (Added Back) --- */}
+          {/* --- FACTORY RESET BUTTON --- */}
           <TouchableOpacity 
             style={[styles.btn, { backgroundColor: '#FF5252' }]} 
             onPress={handleFactoryReset}
