@@ -64,6 +64,13 @@ export default function HistoryScreen() {
     }
   };
 
+  // --- NEW HELPER: REMOVES SECONDS FROM TIME STRING ---
+  const cleanTime = (timeStr) => {
+    if (!timeStr) return '';
+    // Replaces ":SS" with empty string if followed by space (AM/PM) or end of line
+    return timeStr.replace(/:\d{2}(?=\s?[APap][Mm]|$)/, '');
+  };
+
   const getFilteredOrders = () => {
     const now = new Date();
     
@@ -153,8 +160,9 @@ export default function HistoryScreen() {
       
       const dateObj = safeDate(order.date);
       const dateStr = formatDateForDisplay(dateObj); 
-      // FIX 1: Use the stored time if available
-      const timeStr = order.time || formatTimeForDisplay(dateObj);
+      // FIX: Clean the time string here too
+      const rawTime = order.time || formatTimeForDisplay(dateObj);
+      const timeStr = cleanTime(rawTime);
       
       const center = (str) => {
         const width = 32;
@@ -242,34 +250,38 @@ export default function HistoryScreen() {
     });
   };
 
-  const renderOrderItem = ({ item }) => (
-    <TouchableOpacity
-      style={[styles.orderCard, { backgroundColor: theme.card }]}
-      onPress={() => {
-        setSelectedOrder(item);
-        setModalVisible(true);
-      }}
-      onLongPress={() => handleDeleteBill(item.id, item.billNumber)}
-    >
-      <View style={styles.orderHeader}>
-        <Text style={[styles.billNumber, { color: theme.text }]}>{t('bill')} #{item.billNumber}</Text>
-        <Text style={[styles.orderAmount, { color: theme.primary }]}>₹{item.grandTotal ? item.grandTotal.toFixed(2) : item.total.toFixed(2)}</Text>
-      </View>
-      <View style={styles.orderDetails}>
-        {/* FIX 2: Use item.time directly in the list view */}
-        <Text style={[styles.orderDate, { color: theme.textSecondary }]}>
-            📅 {formatDateForDisplay(item.date)}  🕐 {item.time || formatTimeForDisplay(item.date)}
-        </Text>
-      </View>
-      <View style={styles.orderMeta}>
-        <Text style={[styles.orderItems, { color: theme.textSecondary }]}>
-          {item.items.length} {t('items')} •{' '}
-          {item.items.reduce((sum, i) => sum + i.quantity, 0)} {t('qty')}
-        </Text>
-        <Text style={{fontSize: 10, color: '#ff4444', fontStyle: 'italic'}}>(Hold to delete)</Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const renderOrderItem = ({ item }) => {
+    // FIX: Clean time for list view
+    const displayTime = cleanTime(item.time || formatTimeForDisplay(item.date));
+    
+    return (
+      <TouchableOpacity
+        style={[styles.orderCard, { backgroundColor: theme.card }]}
+        onPress={() => {
+          setSelectedOrder(item);
+          setModalVisible(true);
+        }}
+        onLongPress={() => handleDeleteBill(item.id, item.billNumber)}
+      >
+        <View style={styles.orderHeader}>
+          <Text style={[styles.billNumber, { color: theme.text }]}>{t('bill')} #{item.billNumber}</Text>
+          <Text style={[styles.orderAmount, { color: theme.primary }]}>₹{item.grandTotal ? item.grandTotal.toFixed(2) : item.total.toFixed(2)}</Text>
+        </View>
+        <View style={styles.orderDetails}>
+          <Text style={[styles.orderDate, { color: theme.textSecondary }]}>
+              📅 {formatDateForDisplay(item.date)}  🕐 {displayTime}
+          </Text>
+        </View>
+        <View style={styles.orderMeta}>
+          <Text style={[styles.orderItems, { color: theme.textSecondary }]}>
+            {item.items.length} {t('items')} •{' '}
+            {item.items.reduce((sum, i) => sum + i.quantity, 0)} {t('qty')}
+          </Text>
+          <Text style={{fontSize: 10, color: '#ff4444', fontStyle: 'italic'}}>(Hold to delete)</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -418,8 +430,10 @@ export default function HistoryScreen() {
                 <View style={[styles.modalInfo, { backgroundColor: theme.inputBackground }]}>
                   <Text style={[styles.modalInfoText, { color: theme.text }]}>📅 {formatDateForDisplay(selectedOrder.date)}</Text>
                   
-                  {/* FIX 3: Use selectedOrder.time in modal as well */}
-                  <Text style={[styles.modalInfoText, { color: theme.text }]}>🕐 {selectedOrder.time || formatTimeForDisplay(selectedOrder.date)}</Text>
+                  {/* FIX: Clean time for modal view */}
+                  <Text style={[styles.modalInfoText, { color: theme.text }]}>
+                    🕐 {cleanTime(selectedOrder.time || formatTimeForDisplay(selectedOrder.date))}
+                  </Text>
                   
                   {selectedOrder.tableNumber && <Text style={[styles.modalInfoText, { color: theme.text }]}>🪑 {t('table')}: {selectedOrder.tableNumber}</Text>}
                   {selectedOrder.customerName && <Text style={[styles.modalInfoText, { color: theme.text }]}>👤 {selectedOrder.customerName}</Text>}

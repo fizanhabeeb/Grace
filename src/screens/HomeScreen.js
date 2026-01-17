@@ -26,7 +26,7 @@ export default function HomeScreen({ navigation }) {
   const { isLandscape, isSmallScreen, isTablet } = useOrientation();
     
   const [todaySales, setTodaySales] = useState({ count: 0, total: 0 });
-  const [dashboardTables, setDashboardTables] = useState([]); // Renamed for clarity
+  const [dashboardTables, setDashboardTables] = useState([]); 
   const [recentOrders, setRecentOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -44,10 +44,10 @@ export default function HomeScreen({ navigation }) {
     // 3. Visual Table Dashboard Data
     const activeOrdersMap = await getAllActiveOrders();
     
-    // Define standard tables (1 to 12)
-    const standardTables = Array.from({ length: 12 }, (_, i) => String(i + 1));
+    // NEW: Add 'Parcel' to the standard list so it's always visible
+    const standardTables = ['Parcel', ...Array.from({ length: 12 }, (_, i) => String(i + 1))];
     
-    // Combine standard tables with any other currently active tables (e.g., "Parcel", "20")
+    // Combine standard tables with any other currently active tables
     const allTableKeys = new Set([...standardTables, ...Object.keys(activeOrdersMap)]);
     
     const tableList = Array.from(allTableKeys).map(tableNo => {
@@ -60,10 +60,14 @@ export default function HomeScreen({ navigation }) {
       };
     });
 
-    // Sort: Numeric sort for numbers, string sort for text
+    // Sort: Parcel first, then numbers
     tableList.sort((a, b) => {
+      if (a.tableNo === 'Parcel') return -1;
+      if (b.tableNo === 'Parcel') return 1;
+      
       const numA = parseInt(a.tableNo);
       const numB = parseInt(b.tableNo);
+      
       if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
       return a.tableNo.localeCompare(b.tableNo);
     });
@@ -101,7 +105,7 @@ export default function HomeScreen({ navigation }) {
   const handleDeleteTable = (tableNo) => {
     Alert.alert(
         'Delete Order?',
-        `Are you sure you want to clear the active order for Table ${tableNo}?`,
+        `Are you sure you want to clear the active order for ${tableNo}?`,
         [
             { text: 'Cancel', style: 'cancel' },
             { 
@@ -189,33 +193,41 @@ export default function HomeScreen({ navigation }) {
             </View>
 
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                {dashboardTables.map((table) => (
-                    <TouchableOpacity 
-                        key={table.tableNo}
-                        style={[
-                            styles.tableBox, 
-                            { 
-                                backgroundColor: table.isOccupied ? '#ff5252' : '#66bb6a', // Red if occupied, Green if empty
-                                borderColor: table.isOccupied ? '#d32f2f' : '#43a047'
-                            }
-                        ]}
-                        onPress={() => navigation.navigate('Order', { tableNo: table.tableNo })}
-                        onLongPress={() => {
-                            if(table.isOccupied) handleDeleteTable(table.tableNo);
-                        }}
-                        delayLongPress={500}
-                    >
-                        <Text style={[styles.tableNum, { color: '#fff' }]}>{table.tableNo}</Text>
-                        {table.isOccupied ? (
-                            <>
-                                <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11 }}>₹{table.total.toFixed(0)}</Text>
-                                <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10 }}>({table.itemsCount} itm)</Text>
-                            </>
-                        ) : (
-                            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>Empty</Text>
-                        )}
-                    </TouchableOpacity>
-                ))}
+                {dashboardTables.map((table) => {
+                    // Check if it's the Parcel "table" to style it slightly differently if needed
+                    const isParcel = table.tableNo === 'Parcel';
+                    
+                    return (
+                        <TouchableOpacity 
+                            key={table.tableNo}
+                            style={[
+                                styles.tableBox, 
+                                { 
+                                    backgroundColor: table.isOccupied ? '#ff5252' : (isParcel ? '#FF9800' : '#66bb6a'), // Orange for Parcel if empty, Red if occupied
+                                    borderColor: table.isOccupied ? '#d32f2f' : (isParcel ? '#F57C00' : '#43a047')
+                                }
+                            ]}
+                            onPress={() => navigation.navigate('Order', { tableNo: table.tableNo })}
+                            onLongPress={() => {
+                                if(table.isOccupied) handleDeleteTable(table.tableNo);
+                            }}
+                            delayLongPress={500}
+                        >
+                            <Text style={[styles.tableNum, { color: '#fff', fontSize: isParcel ? 16 : 20 }]}>
+                                {isParcel ? ' Parcel' : table.tableNo}
+                            </Text>
+                            
+                            {table.isOccupied ? (
+                                <>
+                                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 11 }}>₹{table.total.toFixed(0)}</Text>
+                                    <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 10 }}>({table.itemsCount} itm)</Text>
+                                </>
+                            ) : (
+                                <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>Empty</Text>
+                            )}
+                        </TouchableOpacity>
+                    );
+                })}
             </View>
           </View>
 
@@ -295,7 +307,7 @@ export default function HomeScreen({ navigation }) {
                 <Text style={[styles.modalTitle, { color: theme.text }]}>Enter Table Number</Text>
                 <TextInput 
                     style={[styles.input, { color: theme.text, backgroundColor: theme.inputBackground, borderColor: theme.border }]}
-                    placeholder="e.g., 20, Parcel"
+                    placeholder="e.g., 20, Staff"
                     placeholderTextColor={theme.textSecondary}
                     value={newTableNumber}
                     onChangeText={setNewTableNumber}
@@ -349,7 +361,7 @@ const styles = StyleSheet.create({
       borderWidth: 1,
       elevation: 2
   },
-  tableNum: { fontSize: 20, fontWeight: 'bold', marginBottom: 2 },
+  tableNum: { fontWeight: 'bold', marginBottom: 2 },
   
   // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
